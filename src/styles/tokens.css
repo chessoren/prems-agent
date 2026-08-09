@@ -1,0 +1,23 @@
+/**
+ * Design tokens.
+ *
+ * The colours defined in the original Framer document. Framer named them
+ * after internal UUIDs; they are renamed here to what they actually are
+ * and referenced by the readable name throughout the stylesheets.
+ */
+:root {
+  --color-surface: #f5f5f5;
+  --color-ink: #1a1a1a;
+  --color-ink-muted: #4d4d4d;
+  --color-white: #fff;
+  --color-accent: #ff7a00;
+  --color-gray-500: #7a7a7a;
+  --color-border: #e0e0e0;
+  --color-gray-400: #999;
+  --color-ink-800: #262626;
+  --color-gray-100: #eaeaea;
+  --color-gray-50: #f0f0f0;
+  --color-black: #000;
+  --color-gray-mid: gray;
+  --color-ink-900: #0d0d0d;
+}

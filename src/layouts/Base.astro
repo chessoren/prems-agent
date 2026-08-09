@@ -1,0 +1,72 @@
+---
+/**
+ * Shared document shell for every page.
+ *
+ * Holds the <head>, the global stylesheets, and the tiny runtime that replaces
+ * Framer's React bundle. Page-specific styles are imported by the page itself.
+ */
+// Stylesheets are imported by each page, in an explicit order, so that the
+// cascade matches the original document exactly.
+
+interface Meta {
+  title: string;
+  description?: string;
+  ogTitle?: string;
+  ogDescription?: string;
+  ogImage?: string;
+  canonical?: string;
+  lang?: string;
+}
+
+interface Props {
+  meta: Meta;
+  appear?: unknown;
+  /** Stylesheet hrefs, applied in order. */
+  styles?: string[];
+}
+
+const { meta, appear = null, styles = [] } = Astro.props;
+const lang = meta.lang || 'fr';
+---
+
+<!doctype html>
+<html lang={lang}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{meta.title}</title>
+    {meta.description && <meta name="description" content={meta.description} />}
+    {meta.canonical && <link rel="canonical" href={meta.canonical} />}
+    {meta.ogTitle && <meta property="og:title" content={meta.ogTitle} />}
+    {meta.ogDescription && <meta property="og:description" content={meta.ogDescription} />}
+    {meta.ogImage && <meta property="og:image" content={meta.ogImage} />}
+    <meta name="generator" content="Astro" />
+    {styles.map((href) => <link rel="stylesheet" href={href} />)}
+  </head>
+  <body>
+    <div id="main">
+      <slot />
+    </div>
+
+    {
+      appear && (
+        <script type="application/json" id="appear-data" set:html={JSON.stringify(appear)} />
+      )
+    }
+
+    <script>
+      import { initAppear } from '../scripts/appear.js';
+      import { initInteractions } from '../scripts/interactions.js';
+
+      const node = document.getElementById('appear-data');
+      if (node) {
+        try {
+          initAppear(JSON.parse(node.textContent || '{}'));
+        } catch {
+          /* malformed payload - leave elements in their final state */
+        }
+      }
+      initInteractions();
+    </script>
+  </body>
+</html>

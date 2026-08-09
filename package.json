@@ -1,0 +1,40 @@
+{
+  "name": "prems-landing-page",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "clone:snapshot": "NODE_USE_ENV_PROXY=1 node tools/1-snapshot.mjs",
+    "clone:assets": "NODE_USE_ENV_PROXY=1 node tools/2-assets.mjs",
+    "clone:reference": "node tools/3-reference.mjs",
+    "clone:generate": "node tools/4-generate.mjs",
+    "clone:verify": "node tools/5-verify.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chessoren/prems-landing-page.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/chessoren/prems-landing-page/issues"
+  },
+  "homepage": "https://github.com/chessoren/prems-landing-page#readme",
+  "devDependencies": {
+    "cheerio": "^1.2.0",
+    "pixelmatch": "^7.2.0",
+    "playwright": "^1.62.1",
+    "pngjs": "^7.0.0",
+    "postcss": "^8.5.26",
+    "prettier": "^3.9.6"
+  },
+  "dependencies": {
+    "astro": "^5.18.2"
+  },
+  "type": "module",
+  "private": true
+}
