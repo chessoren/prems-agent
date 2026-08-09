@@ -1,0 +1,7 @@
+/*
+ * Rules authored by this project (everything else is extracted from Framer).
+ */
+
+[data-faq-answer][hidden] {
+  display: none !important;
+}

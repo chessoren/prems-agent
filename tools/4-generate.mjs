@@ -15,7 +15,7 @@ import { mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import * as cheerio from 'cheerio';
 import prettier from 'prettier';
-import { CACHE_DIR, SRC_DIR, PUBLIC_DIR } from './lib/config.mjs';
+import { CACHE_DIR, SRC_DIR, PUBLIC_DIR, VENDOR_DIR } from './lib/config.mjs';
 import {
   stripReactMarkers,
   stripDeadAttrs,
@@ -25,6 +25,23 @@ import {
 } from './lib/html.mjs';
 import { extractCss, renderTokens } from './lib/extract-css.mjs';
 import { splitPage } from './lib/split.mjs';
+import { injectFaq } from './lib/faq.mjs';
+import { buildIconMap, applyIconMap } from './lib/icons.mjs';
+
+/**
+ * The only stylesheet this project authors itself. Framer's component classes
+ * set `display: flex` on the accordion answer, and an author rule beats the
+ * browser's built-in `[hidden] { display: none }` - so collapsed answers would
+ * otherwise render expanded. Loaded last, after the extracted stylesheets.
+ */
+const RUNTIME_CSS = `/*
+ * Rules authored by this project (everything else is extracted from Framer).
+ */
+
+[data-faq-answer][hidden] {
+  display: none !important;
+}
+`;
 
 /** Classes our own runtime toggles, which must survive css pruning. */
 const RUNTIME_CLASSES = new Set(['is-open', 'is-active', 'appear-ready']);
@@ -67,7 +84,7 @@ function extractAppearData($) {
   }
 }
 
-async function buildPage(route, assetMap, shared) {
+async function buildPage(route, assetMap, shared, faqPairs, iconMap) {
   const raw = await readFile(join(CACHE_DIR, 'raw', `${route.slug}.html`), 'utf8');
   const $ = cheerio.load(stripReactMarkers(raw), { decodeEntities: false });
 
@@ -77,6 +94,12 @@ async function buildPage(route, assetMap, shared) {
   // Styles must be read before we strip the <style> nodes from the tree.
   const css = await extractCss($, assetMap, RUNTIME_CLASSES);
 
+  // Point icon <use> references at the templates already in the document.
+  const icons = applyIconMap($, iconMap);
+
+  // Restore answers Framer only rendered for the expanded items.
+  const faq = injectFaq($, faqPairs);
+
   stripFramerChrome($);
   localiseAssets($, assetMap);
   normaliseLinks($);
@@ -85,7 +108,7 @@ async function buildPage(route, assetMap, shared) {
   $('script').remove();
   $('link[rel="modulepreload"], link[rel="preload"][as="script"]').remove();
 
-  const { shell, parts } = splitPage($, { pageName: pageDir(route.slug) });
+  const { shell, svgTemplates, parts } = splitPage($, { pageName: pageDir(route.slug) });
 
   const dir = pageDir(route.slug);
   const imports = [];
@@ -119,13 +142,21 @@ async function buildPage(route, assetMap, shared) {
     '// go through the bundler: Vite merges large sibling stylesheets into shared',
     '// chunks, which reorders the cascade and can attach the wrong file to a',
     '// page. Editing public/styles/*.css edits the real thing.',
-    `const styles = ${JSON.stringify(['/styles/fonts.css', '/styles/tokens.css', `/styles/${dir}.css`])};`,
+    `const styles = ${JSON.stringify([
+      '/styles/fonts.css',
+      '/styles/tokens.css',
+      `/styles/${dir}.css`,
+      '/styles/runtime.css',
+    ])};`,
     `const meta = ${JSON.stringify(head, null, 2)};`,
     appear ? `const appear = ${JSON.stringify(appear)};` : 'const appear = null;',
     '---',
   ].join('\n');
 
-  const pageSource = `${frontmatter}\n\n<Base meta={meta} appear={appear} styles={styles}>\n${body}\n</Base>\n`;
+  const pageSource =
+    `${frontmatter}\n\n<Base meta={meta} appear={appear} styles={styles}>\n${body}\n` +
+    (svgTemplates ? `\n${svgTemplates}\n` : '') +
+    `</Base>\n`;
   await write(pageFile, pageSource);
 
   await write(join(PUBLIC_DIR, 'styles', `${dir}.css`), css.files.page);
@@ -141,6 +172,8 @@ async function buildPage(route, assetMap, shared) {
     components: parts.map((p) => p.name),
     cssBytes: css.files.page.length,
     pruned: css.stats,
+    faq,
+    icons,
   };
 }
 
@@ -152,15 +185,28 @@ async function main() {
   await rm(join(SRC_DIR, 'pages'), { recursive: true, force: true });
   await rm(join(PUBLIC_DIR, 'styles'), { recursive: true, force: true });
 
+  // Recovered by `npm run clone:faq`; optional so the pipeline still runs
+  // without it.
+  const faqPairs = await readFile(join(CACHE_DIR, 'faq.json'), 'utf8')
+    .then(JSON.parse)
+    .catch(() => []);
+  if (faqPairs.length) console.log(`faq: ${faqPairs.length} recovered answers available`);
+
+  const iconMap = await buildIconMap(join(VENDOR_DIR, 'scripts'));
+  console.log(`icons: ${iconMap.size} template references resolved`);
+
   const shared = { fonts: [], tokenValues: new Map() };
   const report = [];
 
   for (const route of routes) {
-    const r = await buildPage(route, assetMap, shared);
+    const r = await buildPage(route, assetMap, shared, faqPairs, iconMap);
     report.push(r);
     console.log(
       `  ${r.route.padEnd(58)} ${String(r.components.length).padStart(2)} components  ` +
-        `css ${(r.pruned.before / 1024) | 0}kB -> ${(r.pruned.after / 1024) | 0}kB`,
+        `css ${(r.pruned.before / 1024) | 0}kB -> ${(r.pruned.after / 1024) | 0}kB` +
+        (r.faq.items ? `  faq ${r.faq.injected}/${r.faq.items}` : '') +
+        `  icons ${r.icons.rewritten}` +
+        (r.icons.unresolved.length ? ` (${r.icons.unresolved.length} unresolved)` : ''),
     );
   }
 
@@ -168,6 +214,7 @@ async function main() {
   const longest = (arr) => arr.sort((a, b) => b.length - a.length)[0] || '';
   await write(join(PUBLIC_DIR, 'styles', 'fonts.css'), longest(shared.fonts));
   await write(join(PUBLIC_DIR, 'styles', 'tokens.css'), await renderTokens(shared.tokenValues));
+  await write(join(PUBLIC_DIR, 'styles', 'runtime.css'), RUNTIME_CSS);
 
   await writeFile(join(CACHE_DIR, 'generate-report.json'), JSON.stringify(report, null, 2));
   console.log(`\ngenerated ${report.length} pages`);

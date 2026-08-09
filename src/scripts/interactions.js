@@ -63,61 +63,97 @@ function initAnchors() {
 }
 
 /**
- * Framer's Ticker (the looping testimonial/logo marquees).
+ * Framer's Ticker (the looping logo and testimonial marquees).
  *
- * Ticker is a code component: Framer server-renders the list but computes its
- * width, height and duplication in JavaScript, so the exported markup collapses
- * to 0x0 without a runtime. This restores it declaratively - lay the strip out
- * at its natural width, duplicate it once, and loop it with a CSS animation.
+ * Ticker is a code component. The exported markup already lays the strip out
+ * correctly - one <li> holding a row wider than its clipping wrapper - but the
+ * scrolling itself lived in Framer's runtime, so the strip sits motionless.
  *
- * Markup signature: a <ul> carrying an inline translateX, inside a clipping
- * wrapper, with one <li> per item.
+ * This only adds the motion: duplicate the row so there is something to scroll
+ * into, then translate the list by exactly one row's width on a loop. Nothing
+ * here touches width, height or display, because the existing layout is already
+ * pixel-correct and every attempt to "help" it broke it.
  */
-function initTickers() {
-  const lists = document.querySelectorAll('ul[style*="translateX"]');
+const TICKER_SPEED = 60; // px per second
 
-  for (const ul of lists) {
+function initTickers() {
+  for (const ul of document.querySelectorAll('ul[style*="translateX"]')) {
+    if (ul.dataset.tickerReady) continue;
     const items = [...ul.children].filter((c) => c.tagName === 'LI');
-    if (!items.length || ul.dataset.tickerReady) continue;
+    if (!items.length) continue;
+
+    // One row's width: what a full loop must travel.
+    const rowWidth = items.reduce((sum, li) => sum + li.getBoundingClientRect().width, 0);
+    if (rowWidth < 1) continue;
+
     ul.dataset.tickerReady = '1';
 
-    // The SSR inline style pins the strip to the wrapper's size, which is what
-    // collapses it. Let it take its content's width instead.
-    ul.style.width = 'max-content';
-    ul.style.maxWidth = 'none';
-    ul.style.height = 'auto';
-    ul.style.maxHeight = 'none';
-    ul.style.transform = 'none';
-    ul.style.willChange = 'transform';
-
-    const wrapper = ul.parentElement;
-    if (wrapper) {
-      // The clip wrapper inherits a percentage height from the collapsed strip.
-      if (getComputedStyle(wrapper).height === '0px') wrapper.style.height = 'auto';
-      wrapper.style.overflow = 'hidden';
+    // Only the copies get flex:none. Touching the originals shifts the list's
+    // measured width by a few pixels and moves the whole row.
+    for (const li of items) {
+      const copy = li.cloneNode(true);
+      copy.setAttribute('aria-hidden', 'true');
+      copy.style.flex = '0 0 auto';
+      ul.appendChild(copy);
     }
-
-    // Duplicate the strip so the loop has something to scroll into.
-    const strip = document.createElement('div');
-    strip.style.cssText = 'display:flex;align-items:center;flex-direction:row;flex:none;';
-    for (const item of items) strip.appendChild(item);
-
-    const clone = strip.cloneNode(true);
-    clone.setAttribute('aria-hidden', 'true');
-    ul.appendChild(strip);
-    ul.appendChild(clone);
-    ul.style.display = 'flex';
 
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) continue;
 
-    // Duration from width keeps every ticker at the same visual speed.
-    const width = strip.getBoundingClientRect().width;
-    if (!width) continue;
-    const seconds = Math.max(20, Math.round(width / 60));
     ul.animate(
-      [{ transform: 'translateX(0)' }, { transform: `translateX(-${width}px)` }],
-      { duration: seconds * 1000, iterations: Infinity, easing: 'linear' },
+      [{ transform: 'translateX(0)' }, { transform: `translateX(-${rowWidth}px)` }],
+      {
+        duration: (rowWidth / TICKER_SPEED) * 1000,
+        iterations: Infinity,
+        easing: 'linear',
+      },
     );
+  }
+}
+
+/**
+ * FAQ accordion.
+ *
+ * The build annotates each item with both Framer variants - the `framer-v-*`
+ * class and the container's inline style - and gives collapsed items the answer
+ * Framer had omitted. Toggling is then just swapping between the two variants,
+ * so an open item looks exactly like one Framer rendered open.
+ */
+function initFaq() {
+  for (const item of document.querySelectorAll('[data-faq-item]')) {
+    const question = item.querySelector('[data-framer-name="Question"]');
+    const answer = item.querySelector('[data-faq-answer]');
+    if (!question || !answer) continue;
+
+    const container = item.querySelector('[data-framer-name="Container"]');
+    const { faqOpenClass, faqClosedClass, faqOpenStyle, faqClosedStyle } = item.dataset;
+
+    question.setAttribute('role', 'button');
+    question.setAttribute('tabindex', '0');
+    question.style.cursor = 'pointer';
+
+    const apply = (open) => {
+      answer.hidden = !open;
+      if (faqOpenClass && faqClosedClass) {
+        item.classList.toggle(faqOpenClass, open);
+        item.classList.toggle(faqClosedClass, !open);
+      }
+      item.setAttribute('data-framer-name', open ? 'Open' : 'Closed');
+      if (container && faqOpenStyle && faqClosedStyle) {
+        container.setAttribute('style', open ? faqOpenStyle : faqClosedStyle);
+      }
+      question.setAttribute('aria-expanded', String(open));
+    };
+
+    apply(!answer.hidden);
+
+    const toggle = () => apply(answer.hidden);
+    question.addEventListener('click', toggle);
+    question.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggle();
+      }
+    });
   }
 }
 
@@ -125,4 +161,5 @@ export function initInteractions() {
   initMobileNav();
   initAnchors();
   initTickers();
+  initFaq();
 }

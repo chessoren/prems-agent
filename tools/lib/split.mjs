@@ -89,8 +89,15 @@ export function splitPage($, { pageName }) {
       });
   }
 
+  // Framer keeps a library of <svg> symbol definitions in a #svg-templates div
+  // at the end of <body>, and every icon on the page is a <use> pointing into
+  // it. It lives outside the layout root, so it has to be collected explicitly
+  // - without it every icon renders blank.
+  const templates = $('#svg-templates');
+  const svgTemplates = templates.length ? escapeForAstro($.html(templates)) : '';
+
   // Emit the root element itself, not just its children: it carries the layout
   // classes (position/display/min-height) that everything inside is laid out
   // against. Dropping it silently pushes the fixed nav into normal flow.
-  return { shell: $.html(root), parts, pageName };
+  return { shell: $.html(root), svgTemplates, parts, pageName };
 }
