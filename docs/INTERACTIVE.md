@@ -1,82 +1,101 @@
 # Composants interactifs : ce qui marche, ce qui manque
 
-Framer ne rend côté serveur que la variante **active** d'un composant à état.
-Les variantes alternes n'existent que dans le bundle React. Un export statique
-récupère donc le design complet, mais pas toujours la totalité des états.
-
-Ce fichier liste précisément ce que ça implique ici — c'est la seule partie du
-clone qui demande du travail à la main.
+Framer ne rend côté serveur que la variante **active** d'un composant à état, et
+son runtime React fait plusieurs choses invisibles dans le markup. Ce fichier
+liste ce que le clone restitue, et comment.
 
 ---
 
-## Ce qui fonctionne dans le clone
+## Ce qui fonctionne
 
-| Comportement | Statut | Où |
-|---|---|---|
-| Animations d'apparition (fade / scale / slide) | ✅ rejouées à l'identique | `src/scripts/appear.js` |
-| Respect de `prefers-reduced-motion` | ✅ | `appear.js` |
-| Menu mobile (ouverture / fermeture) | ✅ les deux variantes sont rendues | `interactions.js` |
-| Liens d'ancrage internes | ✅ | `interactions.js` |
-| Navigation entre pages | ✅ pages statiques normales | — |
-| Responsive 3 breakpoints | ✅ conservé tel quel | CSS |
-| Hover, focus, transitions CSS | ✅ purement CSS, intacts | CSS |
+| Comportement | Comment c'est restitué |
+|---|---|
+| **Icônes** (355 références) | Voir « Icônes » ci-dessous — résolu à la génération, 0 cassée |
+| **Animations d'apparition** | `src/scripts/appear.js`, rejouées depuis le JSON de Framer, déclenchées à l'entrée dans le viewport |
+| **Carrousels défilants** (logos, témoignages) | `initTickers` dans `interactions.js` |
+| **FAQ (accordéon)** | Réponses récupérées par `npm run clone:faq`, repliage dans `interactions.js` |
+| **Menu mobile** | `initMobileNav` — les deux variantes sont dans le markup |
+| **Liens d'ancrage** | `initAnchors` |
+| `prefers-reduced-motion` | Respecté par les animations et les carrousels |
+| Hover, focus, transitions CSS | Purement CSS, intacts (50 règles `:hover` conservées) |
 
-## Ce qui manque
+### Icônes
 
-### 1. Les carrousels « Ticker » (témoignages, logos clients) — **non résolu**
+Deux mécanismes se cumulaient, et cassaient **toutes** les icônes :
 
-C'est la seule différence visible entre le clone et l'original.
+1. Framer range 35 patrons `<svg>` dans un `<div id="svg-templates">` en fin de
+   `<body>` — **hors** du layout root que l'extracteur découpait. Les 308 `<use>`
+   pointaient donc dans le vide.
+2. Framer écrit `<use href="#3164290856">`, où le nombre est une **clé de cache**,
+   pas un id d'élément. Au runtime, `shared-lib.mjs` enregistre le patron et
+   réécrit la référence vers le vrai id interne (`#o4RpECsKY`).
 
-`Ticker` est un *code component* Framer : le markup de la liste est bien rendu
-côté serveur, mais sa largeur, sa hauteur et la duplication des éléments sont
-calculées en JavaScript au runtime. Sans ce runtime, le conteneur s'effondre à
-0 × 0 et la bande apparaît vide.
+`tools/lib/icons.mjs` reconstitue cette correspondance statiquement en appariant
+chaque clé avec son patron dans le bundle. Résultat : les icônes s'affichent sans
+aucun runtime.
 
-- **Pages touchées** : `/contact`, `/pricing` (bande témoignages).
-  L'accueil n'est pas affecté de manière visible.
-- **Impact mesuré** : c'est ce qui explique les 5 vues au-dessus de 1 % dans
-  `npm run clone:verify` (max 2,4 %). Les 28 autres vues sont à ~0 %.
-- **Un shim est présent** dans `interactions.js` (`initTickers`) : il remet la
-  bande à sa largeur naturelle, duplique les éléments et les anime en CSS. Il
-  **ne suffit pas** en l'état — la bande reste vide sur `/contact`. Il est
-  conservé comme point de départ, pas comme solution.
-- **Correctif conseillé** : le contenu des cartes est présent dans le HTML.
-  Le plus simple est de remplacer le ticker par une grille ou un carrousel
-  CSS classique (`display:flex` + `overflow-x:auto`, ou `@keyframes` sur une
-  bande dupliquée) dans le composant concerné. C'est ~20 lignes de CSS, et ça
-  supprime définitivement la dépendance au runtime Framer.
+### Animations
 
-### 2. Les états non rendus côté serveur
+Elles fonctionnaient déjà, mais se déclenchaient **toutes au chargement** : le
+temps d'arriver sur une section, tout avait fini de fondre et la page paraissait
+figée. Elles jouent maintenant à l'entrée dans le viewport, comme chez Framer.
 
-| Composant | Ce qui est dans le HTML | Ce qui manque |
-|---|---|---|
-| FAQ (accordéon) | les 20 questions ; **2 réponses** (les items ouverts) | les 18 autres réponses |
-| Tarifs (bascule Mensuel / Annuel) | la variante **Mensuel** | la variante Annuel |
-| Onglets « Workflows » | les libellés des onglets, panneau actif | les panneaux inactifs |
+### Carrousels
 
-Ces contenus ne sont récupérables ni depuis le HTML ni depuis un rendu
-headless : ils vivent dans les données du bundle. Deux options :
+Leçon utile : le markup exporté est **déjà correct**. Une première version du
+shim redimensionnait la bande « pour aider » et l'effondrait. La version actuelle
+ne touche ni largeur, ni hauteur, ni `display` — elle duplique la rangée et
+translate la liste, rien de plus.
 
-1. **Les ressaisir** dans les composants concernés (c'est du texte, une fois).
-   Les réponses sont visibles sur le site publié — il suffit de les recopier
-   dans `src/components/home/*.astro`, puis de câbler l'ouverture/fermeture
-   comme le menu mobile dans `interactions.js`.
-2. **Les extraire du bundle** : `.cache` conserve les chunks d'origine, et le
-   contenu de la FAQ se trouve dans
-   `public/assets/scripts/ZH9VkEhhA.*.mjs`. C'est faisable, mais lire une
-   structure de données minifiée est plus long que retaper le texte.
+### FAQ
 
-> Une fois ces états écrits en dur, le site n'a plus aucune dépendance à
-> Framer — et vous pouvez arrêter de régénérer.
+Les réponses des items repliés ne sont pas rendues côté serveur, et piloter
+l'original hors ligne ne suffit pas : l'accordéon est lui-même un *code
+component* dont le clic ne fonctionne pas sans le runtime Framer.
+
+Elles sont en revanche compilées dans le chunk JS de la page, sous forme de props
+de composant. `npm run clone:faq` les relit en repérant la clé de prop dont les
+valeurs correspondent aux questions présentes dans le markup — plutôt que de
+coder en dur un nom de prop haché, qui change à chaque publication.
+
+La génération les réinjecte et annote chaque item avec ses deux variantes Framer
+(classe `framer-v-*` + style inline du conteneur), pour que l'ouverture soit
+visuellement identique à l'originale. Sans JavaScript, les items ouverts restent
+ouverts et les réponses repliées sont simplement masquées.
+
+## Ce qui manque encore
+
+| Composant | État |
+|---|---|
+| **Tarifs — bascule Mensuel / Annuel** | Seule la variante *Mensuel* est rendue ; la variante *Annuel* n'existe que dans le bundle. |
+| **Onglets « Workflows »** | Les libellés et le panneau actif sont présents ; les panneaux inactifs non. |
+| **Hover piloté par variantes** | Les hovers CSS sont intacts. Ceux que Framer implémente comme changement de variante React (état JS, pas CSS) ne sont pas transposables depuis le markup. |
+
+Pour les deux premiers, la même technique que la FAQ s'applique : le contenu est
+dans les bundles (`.cache/vendor/scripts/`), et `tools/6-faq.mjs` sert de modèle —
+il repère une clé de prop par correspondance avec le markup plutôt que par un nom
+codé en dur.
 
 ## Ajouter un comportement
 
-`src/scripts/interactions.js` est volontairement minuscule et sans dépendance.
-Les blocs se repèrent par leur nom Framer, conservé dans le markup :
+`src/scripts/interactions.js` est sans dépendance. Les blocs se repèrent par leur
+nom Framer, conservé dans le markup :
 
 ```js
 document.querySelectorAll('[data-framer-name="Question"]');
 ```
 
-C'est la raison pour laquelle les attributs `data-framer-name` n'ont pas été
-supprimés à la génération : ils constituent la table des matières du markup.
+C'est pour ça que les attributs `data-framer-name` n'ont pas été supprimés à la
+génération : ils constituent la table des matières du markup.
+
+## Le point aveugle du test pixel
+
+`npm run clone:verify` compare des captures **statiques**. Il ne voit donc pas :
+
+- le hover et les interactions (aucun clic, aucun survol) ;
+- une animation cassée — l'élément finit sur la même image finale dans les deux
+  cas, donc l'écart reste nul.
+
+Les cinq défauts corrigés ici étaient tous invisibles pour lui, alors qu'il
+affichait 0,277 % d'écart moyen. Un écart faible prouve que la **mise en page**
+est fidèle, rien de plus.

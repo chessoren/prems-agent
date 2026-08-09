@@ -61,6 +61,7 @@ Cinq étapes indépendantes, relançables (`npm run clone:*`) :
 | 3 | `clone:reference` | **Le point clé** — voir ci-dessous. |
 | 4 | `clone:generate` | Produit le site propre : pages, composants, CSS, tokens. |
 | 5 | `clone:verify` | Diff pixel du clone contre la référence, 33 vues. |
+| 6 | `clone:faq` | Relit dans les bundles les réponses de FAQ que Framer ne rend pas. |
 
 ### L'étape 3 : se donner une vérité terrain
 
@@ -126,12 +127,24 @@ De même, Framer rend **trois copies** de chaque bloc (une par breakpoint) et
 masque les inactives en `display: none`. On la conserve : fusionner ces
 variantes reviendrait à réécrire à la main tout le responsive.
 
-## Limite connue : les états non rendus
+## Le comportement, pas seulement l'apparence
 
-Framer ne rend côté serveur que la variante *active* d'un composant à état. Les
-variantes alternes n'existent que dans le bundle. Le détail est documenté dans
-[`docs/INTERACTIVE.md`](docs/INTERACTIVE.md) — c'est la seule partie qui demande
-un peu de travail à la main, et elle est chiffrée.
+Le diff pixel compare des captures statiques : il est aveugle au hover, aux
+interactions, et une animation cassée finit sur la même image que la bonne. Cinq
+défauts lui ont donc échappé — icônes, animations, carrousels, FAQ — et ont été
+corrigés séparément.
+
+- **Icônes** : Framer référence ses icônes par une *clé de cache* (`#3164290856`)
+  que son runtime réécrit, et range les patrons SVG hors du layout root. Les deux
+  sont résolus à la génération : 355 références, 0 cassée.
+- **Animations** : rejouées depuis le JSON de Framer, déclenchées à l'entrée dans
+  le viewport (les lancer toutes au chargement donne une page qui paraît figée).
+- **FAQ** : les réponses repliées ne sont pas rendues côté serveur ; elles sont
+  relues dans les bundles par `npm run clone:faq`, puis réinjectées.
+
+Ce qui manque encore — bascule tarifaire Mensuel/Annuel, panneaux d'onglets
+inactifs — est listé et chiffré dans
+[`docs/INTERACTIVE.md`](docs/INTERACTIVE.md), avec la méthode pour le récupérer.
 
 ## Régénérer après une modif dans Framer
 
