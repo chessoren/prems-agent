@@ -27,6 +27,7 @@ import { extractCss, renderTokens } from './lib/extract-css.mjs';
 import { splitPage } from './lib/split.mjs';
 import { injectFaq } from './lib/faq.mjs';
 import { buildIconMap, applyIconMap } from './lib/icons.mjs';
+import { revealTickers } from './lib/tickers.mjs';
 
 /**
  * The only stylesheet this project authors itself. Framer's component classes
@@ -96,6 +97,9 @@ async function buildPage(route, assetMap, shared, faqPairs, iconMap) {
 
   // Point icon <use> references at the templates already in the document.
   const icons = applyIconMap($, iconMap);
+
+  // Make the marquee strips visible; Framer ships them transparent.
+  const tickers = revealTickers($);
 
   // Restore answers Framer only rendered for the expanded items.
   const faq = injectFaq($, faqPairs);
@@ -174,6 +178,7 @@ async function buildPage(route, assetMap, shared, faqPairs, iconMap) {
     pruned: css.stats,
     faq,
     icons,
+    tickers,
   };
 }
 
@@ -206,6 +211,7 @@ async function main() {
         `css ${(r.pruned.before / 1024) | 0}kB -> ${(r.pruned.after / 1024) | 0}kB` +
         (r.faq.items ? `  faq ${r.faq.injected}/${r.faq.items}` : '') +
         `  icons ${r.icons.rewritten}` +
+        (r.tickers ? `  tickers ${r.tickers}` : '') +
         (r.icons.unresolved.length ? ` (${r.icons.unresolved.length} unresolved)` : ''),
     );
   }

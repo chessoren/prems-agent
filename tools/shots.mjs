@@ -1,0 +1,23 @@
+import { chromium } from 'playwright';
+import { createServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
+import { extname, join } from 'node:path';
+import { CHROME, ROOT } from './lib/config.mjs';
+const SP='/tmp/claude-0/-home-user-prems-landing-page/44c243e8-7b4e-57e4-b044-5321ac1e8f65/scratchpad';
+const DIST=join(ROOT,'dist');
+const M={'.html':'text/html; charset=utf-8','.css':'text/css','.js':'text/javascript','.png':'image/png','.woff2':'font/woff2','.woff':'font/woff','.svg':'image/svg+xml','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.avif':'image/avif','.mp4':'video/mp4','.gif':'image/gif','.ico':'image/x-icon'};
+const srv=createServer(async(req,res)=>{try{
+  let p=decodeURIComponent(new URL(req.url,'http://x').pathname);
+  let f=join(DIST,p); if(!extname(p)) f=join(DIST,p,'index.html');
+  const b=await readFile(f); res.writeHead(200,{'content-type':M[extname(f).toLowerCase()]||'text/plain'}); res.end(b);
+}catch{ if(!res.headersSent) res.writeHead(404); res.end('nf');}}).listen(0);
+const origin=`http://127.0.0.1:${srv.address().port}`;
+const b=await chromium.launch({executablePath:CHROME});
+const ctx=await b.newContext({viewport:{width:1440,height:900}});
+const page=await ctx.newPage();
+await page.goto(origin+'/',{waitUntil:'load',timeout:120000});
+await page.evaluate(async()=>{const s=Math.round(innerHeight*0.8);for(let y=0;y<document.body.scrollHeight;y+=s){scrollTo(0,y);await new Promise(r=>setTimeout(r,150));}scrollTo(0,0);});
+await page.waitForTimeout(5000);
+await page.screenshot({path:`${SP}/now_full.png`, fullPage:true});
+console.log('ok');
+await b.close(); srv.close();

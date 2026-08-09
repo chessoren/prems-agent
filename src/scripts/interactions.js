@@ -76,28 +76,58 @@ function initAnchors() {
  */
 const TICKER_SPEED = 60; // px per second
 
+/**
+ * Tickers must not be touched until layout has settled.
+ *
+ * Measuring a row before its fonts and images have their intrinsic size gives a
+ * wrong row width, and mutating the list at that point makes the whole strip
+ * land hundreds of pixels off. Waiting for `load` plus `fonts.ready` reproduces
+ * the conditions under which the duplication provably changes nothing.
+ */
+function whenSettled(run) {
+  const go = () =>
+    Promise.resolve(document.fonts?.ready).then(() =>
+      requestAnimationFrame(() => requestAnimationFrame(run)),
+    );
+  if (document.readyState === 'complete') go();
+  else window.addEventListener('load', go, { once: true });
+}
+
 function initTickers() {
   for (const ul of document.querySelectorAll('ul[style*="translateX"]')) {
     if (ul.dataset.tickerReady) continue;
     const items = [...ul.children].filter((c) => c.tagName === 'LI');
     if (!items.length) continue;
 
-    // One row's width: what a full loop must travel.
+    // Framer ships one copy of every block per breakpoint and hides the
+    // inactive ones. Only animate the copy that is actually on screen: cloning
+    // into a hidden variant still perturbs the sizing of shared ancestors, and
+    // that is what threw the visible strip out of its cell.
+    if (ul.getBoundingClientRect().width < 1) continue;
+
     const rowWidth = items.reduce((sum, li) => sum + li.getBoundingClientRect().width, 0);
     if (rowWidth < 1) continue;
 
     ul.dataset.tickerReady = '1';
 
-    // Only the copies get flex:none. Touching the originals shifts the list's
-    // measured width by a few pixels and moves the whole row.
+    // The duplicate is positioned absolutely, one row to the right. That is the
+    // whole trick: an in-flow copy widens the list, the list's parent sizes to
+    // its content, and the centred row jumps hundreds of pixels out of its
+    // cell. Out of flow, the copy contributes nothing to intrinsic width, so
+    // the layout stays byte-identical to the original.
+    //
+    // The list already carries an inline transform, which makes it the
+    // containing block for the copy - no positioning change needed on the list.
     for (const li of items) {
       const copy = li.cloneNode(true);
       copy.setAttribute('aria-hidden', 'true');
-      copy.style.flex = '0 0 auto';
+      copy.style.position = 'absolute';
+      copy.style.top = '0';
+      copy.style.left = `${rowWidth}px`;
       ul.appendChild(copy);
     }
 
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) continue;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
     ul.animate(
       [{ transform: 'translateX(0)' }, { transform: `translateX(-${rowWidth}px)` }],
@@ -160,6 +190,6 @@ function initFaq() {
 export function initInteractions() {
   initMobileNav();
   initAnchors();
-  initTickers();
+  whenSettled(initTickers);
   initFaq();
 }

@@ -40,12 +40,26 @@ Elles fonctionnaient déjà, mais se déclenchaient **toutes au chargement** : l
 temps d'arriver sur une section, tout avait fini de fondre et la page paraissait
 figée. Elles jouent maintenant à l'entrée dans le viewport, comme chez Framer.
 
-### Carrousels
+### Carrousels (bande logos, bande témoignages)
+
+Deux causes distinctes, trouvées dans cet ordre :
+
+1. **Invisibles.** Framer rend chaque bande dans un `<section>` portant
+   `opacity: 0` **en inline**. Le contenu est complet — images, cartes, étoiles —
+   mais c'est le runtime du composant qui bascule l'opacité à 1 après s'être
+   mesuré. Sans runtime, la bande reste un rectangle vide.
+   `tools/lib/tickers.mjs` corrige l'opacité à la génération, donc ça marche
+   aussi sans JavaScript.
+2. **Immobiles.** Le défilement lui-même vivait dans le runtime. `initTickers`
+   duplique la rangée en **position absolue** (une copie dans le flux élargit la
+   liste et décale toute la bande) et translate la liste.
 
 Leçon utile : le markup exporté est **déjà correct**. Une première version du
-shim redimensionnait la bande « pour aider » et l'effondrait. La version actuelle
-ne touche ni largeur, ni hauteur, ni `display` — elle duplique la rangée et
-translate la liste, rien de plus.
+shim redimensionnait la bande « pour aider » et l'effondrait.
+
+> Ces deux bandes étaient vides **dans l'original hors ligne aussi**. C'est
+> précisément pour ça que la comparaison avec la référence ne pouvait pas les
+> signaler — voir « Le point aveugle » plus bas.
 
 ### FAQ
 
@@ -96,6 +110,12 @@ génération : ils constituent la table des matières du markup.
 - une animation cassée — l'élément finit sur la même image finale dans les deux
   cas, donc l'écart reste nul.
 
-Les cinq défauts corrigés ici étaient tous invisibles pour lui, alors qu'il
-affichait 0,277 % d'écart moyen. Un écart faible prouve que la **mise en page**
-est fidèle, rien de plus.
+Les défauts corrigés ici lui étaient tous invisibles, alors qu'il affichait
+0,277 % d'écart moyen. Un écart faible prouve que la **mise en page** est
+fidèle, rien de plus.
+
+Pire : la référence est un rendu **hors ligne** de l'original, où le runtime
+Framer ne s'exécute pas complètement. Tout ce que ce runtime produit — icônes,
+opacité des carrousels — manque donc **des deux côtés**, et l'écart reste nul.
+Sur ces points le clone est aujourd'hui *meilleur* que la référence, ce qui fait
+légèrement monter l'écart mesuré (0,31 %). C'est attendu, pas une régression.
