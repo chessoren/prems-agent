@@ -146,6 +146,21 @@ Ce qui manque encore — bascule tarifaire Mensuel/Annuel, panneaux d'onglets
 inactifs — est listé et chiffré dans
 [`docs/INTERACTIVE.md`](docs/INTERACTIVE.md), avec la méthode pour le récupérer.
 
+## Le parcours d'inscription
+
+`/onboarding` n'est pas issu de Framer : c'est treize écrans écrits à la main,
+adossés à Supabase, qui consomment les mêmes tokens que le reste du site. Les
+boutons d'appel à l'action de la landing y renvoient désormais.
+
+```bash
+npm run db:provision      # schéma, RLS, buckets (idempotent)
+npm run db:seed           # 1 100 annonces de démo sur 11 villes
+npm run shots:onboarding  # rejoue les 13 écrans dans Chromium, 2 breakpoints
+```
+
+Architecture et décisions : [`docs/ONBOARDING.md`](docs/ONBOARDING.md).
+Ce qu'il reste à brancher : [`docs/CLOUD-RUN.md`](docs/CLOUD-RUN.md).
+
 ## Régénérer après une modif dans Framer
 
 ```bash

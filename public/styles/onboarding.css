@@ -1,0 +1,1572 @@
+/*
+ * Onboarding.
+ *
+ * Authored by hand, unlike every other stylesheet here - those are extracted
+ * from Framer and keep their hashed class names because they are a contract
+ * with exported markup. This flow has no Framer original, so it uses readable
+ * class names and consumes the same tokens.
+ *
+ * Everything visual below is taken from the landing page: the 100px pills, the
+ * five-layer button shadow with its inset highlight, Inter Tight at -0.02em for
+ * headings, the #ff7a00 accent, the 810/1200 breakpoints.
+ */
+
+/* --------------------------------------------------------------------------
+ * Reset.
+ *
+ * This page does not load home.css, which is where the rest of the site gets
+ * its box-sizing and margin reset from. Without this block `width: 100%` plus
+ * padding overflows every container by exactly the gutter, and the browser's
+ * default heading margins fight the spacing below.
+ *
+ * :where() keeps the specificity at zero so the component rules further down
+ * still win without needing !important.
+ * -------------------------------------------------------------------------- */
+.ob,
+.ob *,
+.ob *::before,
+.ob *::after {
+  box-sizing: border-box;
+}
+
+.ob :where(h1, h2, h3, h4, p, ul, ol, figure, blockquote) {
+  margin: 0;
+  padding: 0;
+}
+
+.ob :where(ul, ol) {
+  list-style: none;
+}
+
+.ob :where(button, input, select, textarea) {
+  font: inherit;
+  color: inherit;
+}
+
+/* --------------------------------------------------------------------------
+ * Local tokens: derived from the shared palette, named for this flow.
+ * -------------------------------------------------------------------------- */
+.ob {
+  --ob-radius-card: 20px;
+  --ob-radius-field: 16px;
+  --ob-radius-pill: 100px;
+
+  --ob-shell-max: 560px;
+  --ob-gutter: 20px;
+
+  --ob-ease: cubic-bezier(0.44, 0, 0.56, 1);
+  --ob-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ob-duration: 320ms;
+
+  /* The landing page's primary button, verbatim. */
+  --ob-shadow-btn:
+    0px 5px 12px 0px rgba(179, 179, 179, 0.1), 0px 21px 21px 0px rgba(179, 179, 179, 0.09),
+    0px 48px 29px 0px rgba(179, 179, 179, 0.05), 0px 86px 34px 0px rgba(179, 179, 179, 0.01),
+    0px 134px 38px 0px rgba(179, 179, 179, 0);
+  --ob-shadow-btn-inner:
+    0px 3px 6px 0px rgba(82, 82, 82, 0.1), 0px 10px 10px 0px rgba(82, 82, 82, 0.09),
+    0px 23px 14px 0px rgba(82, 82, 82, 0.05), 0px 40px 16px 0px rgba(82, 82, 82, 0.01),
+    inset 0px 1px 1px 0px rgba(255, 255, 255, 0.3);
+  --ob-shadow-card: 0px 1px 2px rgba(26, 26, 26, 0.04), 0px 8px 24px rgba(26, 26, 26, 0.05);
+  --ob-shadow-card-hover: 0px 2px 4px rgba(26, 26, 26, 0.06), 0px 16px 40px rgba(26, 26, 26, 0.09);
+}
+
+/* --------------------------------------------------------------------------
+ * Shell
+ * -------------------------------------------------------------------------- */
+body.ob-body {
+  margin: 0;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-family: "Inter", "Inter Placeholder", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* iOS: keep the sticky footer above the home indicator. */
+  min-height: 100svh;
+}
+
+.ob {
+  display: flex;
+  overflow-x: clip;
+  flex-direction: column;
+  min-height: 100svh;
+}
+
+.ob__main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  padding: 0 var(--ob-gutter);
+}
+
+.ob__stage {
+  position: relative;
+  width: 100%;
+  max-width: var(--ob-shell-max);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 28px 0 24px;
+}
+
+/* Wide screens get a taller optical centre rather than a bigger card: the
+ * question should sit slightly above the middle, where the eye lands. */
+@media (min-width: 810px) {
+  .ob__stage {
+    justify-content: flex-start;
+    padding-top: min(9vh, 88px);
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * Header: back control, wordmark, progress
+ * -------------------------------------------------------------------------- */
+.ob__header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  width: 100%;
+  padding: 14px var(--ob-gutter) 12px;
+  background: color-mix(in srgb, var(--color-surface) 86%, transparent);
+  backdrop-filter: saturate(180%) blur(14px);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
+}
+
+.ob__header-inner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  max-width: var(--ob-shell-max);
+  margin: 0 auto;
+}
+
+.ob__back {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--ob-radius-pill);
+  background: var(--color-white);
+  color: var(--color-ink);
+  cursor: pointer;
+  transition: transform 160ms var(--ob-ease), border-color 160ms var(--ob-ease),
+    opacity 160ms var(--ob-ease);
+}
+
+.ob__back:hover {
+  transform: translateX(-2px);
+  border-color: var(--color-gray-400);
+}
+
+.ob__back[hidden] {
+  display: none;
+}
+
+.ob__back svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Duolingo's real trick is that the bar is the primary object in the header -
+ * it is wide, it is the only coloured thing, and it visibly moves. */
+.ob__progress {
+  position: relative;
+  flex: 1;
+  height: 14px;
+  border-radius: var(--ob-radius-pill);
+  background: var(--color-gray-100);
+  overflow: hidden;
+}
+
+.ob__progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0%;
+  border-radius: var(--ob-radius-pill);
+  background: linear-gradient(180deg, #ffa14d 0%, var(--color-accent) 60%, #e86e00 100%);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.55);
+  transition: width 620ms var(--ob-ease-out);
+}
+
+/* The moving sheen reads as "something is happening", which is the whole
+ * reason the bar is visible from screen 1. */
+.ob__progress-fill::after {
+  content: "";
+  position: absolute;
+  inset: 2px 4px auto 4px;
+  height: 3px;
+  border-radius: var(--ob-radius-pill);
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.ob__progress-label {
+  flex: none;
+  min-width: 40px;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink-muted);
+  text-align: right;
+}
+
+/* --------------------------------------------------------------------------
+ * Screen transitions
+ * -------------------------------------------------------------------------- */
+.ob__screen {
+  width: 100%;
+  animation: ob-enter var(--ob-duration) var(--ob-ease-out) both;
+}
+
+.ob__screen--back {
+  animation-name: ob-enter-back;
+}
+
+@keyframes ob-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(26px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ob-enter-back {
+  from {
+    opacity: 0;
+    transform: translate3d(-26px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.ob__screen--leaving {
+  animation: ob-leave 180ms var(--ob-ease) both;
+}
+
+@keyframes ob-leave {
+  to {
+    opacity: 0;
+    transform: translate3d(-18px, 0, 0);
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * Typography
+ * -------------------------------------------------------------------------- */
+.ob__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 14px;
+  padding: 6px 13px 6px 9px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--ob-radius-pill);
+  background: var(--color-white);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-ink-muted);
+}
+
+.ob__eyebrow::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(255, 122, 0, 0.18);
+}
+
+.ob__title {
+  margin: 0;
+  font-family: "Inter Tight", "Inter Tight Placeholder", sans-serif;
+  font-weight: 600;
+  font-size: clamp(27px, 6.4vw, 38px);
+  line-height: 118%;
+  letter-spacing: -0.02em;
+  color: var(--color-ink);
+  text-wrap: balance;
+}
+
+.ob__subtitle {
+  margin: 12px 0 0;
+  font-size: 16px;
+  line-height: 152%;
+  color: var(--color-ink-muted);
+  text-wrap: pretty;
+}
+
+.ob__body {
+  margin-top: 26px;
+}
+
+/* --------------------------------------------------------------------------
+ * Buttons - the landing page recipe, reproduced exactly
+ * -------------------------------------------------------------------------- */
+.ob-btn {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: var(--ob-radius-pill);
+  background: var(--color-ink);
+  box-shadow: var(--ob-shadow-btn);
+  cursor: pointer;
+  text-decoration: none;
+  transition: transform 180ms var(--ob-ease), opacity 180ms var(--ob-ease),
+    filter 180ms var(--ob-ease);
+}
+
+.ob-btn__inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 15px 22px;
+  border-top: 1px solid var(--color-gray-500);
+  border-radius: var(--ob-radius-pill);
+  box-shadow: var(--ob-shadow-btn-inner);
+  font-family: "Inter", "Inter Placeholder", sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--color-white);
+}
+
+.ob-btn:hover {
+  transform: translateY(-1px);
+}
+
+.ob-btn:active {
+  transform: translateY(1px) scale(0.995);
+}
+
+.ob-btn[disabled],
+.ob-btn[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.38;
+  transform: none;
+  filter: grayscale(0.35);
+}
+
+.ob-btn--light {
+  background: var(--color-white);
+}
+
+.ob-btn--light .ob-btn__inner {
+  border-top-color: var(--color-white);
+  color: var(--color-ink);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.9), 0 1px 2px rgba(26, 26, 26, 0.05);
+}
+
+.ob-btn--accent {
+  background: var(--color-accent);
+  box-shadow: 0px 5px 12px rgba(255, 122, 0, 0.22), 0px 21px 24px rgba(255, 122, 0, 0.16),
+    0px 48px 32px rgba(255, 122, 0, 0.08), 0px 86px 36px rgba(255, 122, 0, 0.02);
+}
+
+.ob-btn--accent .ob-btn__inner {
+  border-top-color: rgba(255, 255, 255, 0.55);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.45), 0 10px 10px rgba(160, 74, 0, 0.08);
+}
+
+.ob-btn__arrow {
+  transition: transform 220ms var(--ob-ease-out);
+}
+
+.ob-btn:hover .ob-btn__arrow {
+  transform: translateX(3px);
+}
+
+/* The quiet secondary action: always a text link, never a competing pill.
+ * This is what keeps "scan your ID" from outranking the manual fields. */
+.ob-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 4px;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--color-ink-muted);
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 160ms var(--ob-ease);
+}
+
+.ob-link:hover {
+  color: var(--color-ink);
+}
+
+.ob-link--center {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+/* --------------------------------------------------------------------------
+ * Sticky footer holding the primary action
+ * -------------------------------------------------------------------------- */
+.ob__footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 15;
+  width: 100%;
+  padding: 14px var(--ob-gutter) calc(16px + env(safe-area-inset-bottom));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-surface) 0%, transparent) 0%,
+    var(--color-surface) 34%
+  );
+}
+
+.ob__footer-inner {
+  width: 100%;
+  max-width: var(--ob-shell-max);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.ob__footer-hint {
+  font-size: 13px;
+  color: var(--color-gray-500);
+  text-align: center;
+}
+
+/* --------------------------------------------------------------------------
+ * Option cards (screen 3, 6, 9, 10)
+ * -------------------------------------------------------------------------- */
+.ob-options {
+  display: grid;
+  gap: 12px;
+}
+
+.ob-options--pair {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ob-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 17px 18px;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--ob-radius-card);
+  background: var(--color-white);
+  box-shadow: var(--ob-shadow-card);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 180ms var(--ob-ease-out), border-color 180ms var(--ob-ease),
+    box-shadow 180ms var(--ob-ease), background-color 180ms var(--ob-ease);
+}
+
+.ob-option:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-gray-400);
+  box-shadow: var(--ob-shadow-card-hover);
+}
+
+.ob-option:active {
+  transform: translateY(0) scale(0.988);
+}
+
+.ob-option[aria-pressed="true"],
+.ob-option[data-selected="true"] {
+  border-color: var(--color-ink);
+  background: var(--color-white);
+  box-shadow: var(--ob-shadow-card-hover), inset 0 0 0 1px var(--color-ink);
+}
+
+.ob-option__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: var(--color-gray-50);
+  font-size: 21px;
+  transition: background-color 180ms var(--ob-ease), transform 240ms var(--ob-ease-out);
+}
+
+.ob-option[data-selected="true"] .ob-option__icon {
+  background: rgba(255, 122, 0, 0.12);
+  transform: scale(1.06);
+}
+
+.ob-option__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.ob-option__label {
+  display: block;
+  font-family: "Inter Display", "Inter Display Placeholder", sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--color-ink);
+}
+
+.ob-option__hint {
+  display: block;
+  margin-top: 2px;
+  font-size: 13.5px;
+  line-height: 140%;
+  color: var(--color-gray-500);
+}
+
+.ob-option__check {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1.5px solid var(--color-border);
+  border-radius: 50%;
+  color: var(--color-white);
+  transition: background-color 180ms var(--ob-ease), border-color 180ms var(--ob-ease),
+    transform 240ms var(--ob-ease-out);
+}
+
+.ob-option[data-selected="true"] .ob-option__check {
+  border-color: var(--color-ink);
+  background: var(--color-ink);
+  transform: scale(1.08);
+}
+
+.ob-option__check svg {
+  width: 13px;
+  height: 13px;
+  opacity: 0;
+  transition: opacity 140ms var(--ob-ease);
+}
+
+.ob-option[data-selected="true"] .ob-option__check svg {
+  opacity: 1;
+}
+
+/* Tall variant for screen 3, where the cards are the whole screen. */
+.ob-option--tall {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 20px 18px;
+  min-height: 128px;
+}
+
+.ob-option--tall .ob-option__check {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+}
+
+/* --------------------------------------------------------------------------
+ * Fields
+ * -------------------------------------------------------------------------- */
+.ob-field {
+  display: block;
+  margin-bottom: 16px;
+}
+
+.ob-field__label {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--color-ink);
+}
+
+.ob-field__optional {
+  font-weight: 400;
+  color: var(--color-gray-400);
+}
+
+.ob-input {
+  width: 100%;
+  padding: 16px 17px;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--ob-radius-field);
+  background: var(--color-white);
+  font-family: inherit;
+  font-size: 16px; /* never below 16px: iOS zooms the viewport otherwise */
+  color: var(--color-ink);
+  box-shadow: var(--ob-shadow-card);
+  transition: border-color 160ms var(--ob-ease), box-shadow 160ms var(--ob-ease);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.ob-input::placeholder {
+  color: var(--color-gray-400);
+}
+
+.ob-input:focus {
+  outline: none;
+  border-color: var(--color-ink);
+  box-shadow: var(--ob-shadow-card), 0 0 0 4px rgba(26, 26, 26, 0.07);
+}
+
+.ob-input[aria-invalid="true"] {
+  border-color: #d94a2b;
+  box-shadow: 0 0 0 4px rgba(217, 74, 43, 0.1);
+}
+
+.ob-field__error {
+  display: block;
+  margin-top: 7px;
+  font-size: 13.5px;
+  color: #c23f22;
+}
+
+.ob-field__row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 480px) {
+  .ob-field__row {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
+
+/* Prefix affix, for € and phone country code */
+.ob-affix {
+  display: flex;
+  align-items: center;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--ob-radius-field);
+  background: var(--color-white);
+  box-shadow: var(--ob-shadow-card);
+  transition: border-color 160ms var(--ob-ease), box-shadow 160ms var(--ob-ease);
+}
+
+.ob-affix:focus-within {
+  border-color: var(--color-ink);
+  box-shadow: var(--ob-shadow-card), 0 0 0 4px rgba(26, 26, 26, 0.07);
+}
+
+.ob-affix__prefix {
+  flex: none;
+  padding: 0 4px 0 17px;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--color-gray-500);
+}
+
+.ob-affix .ob-input {
+  border: 0;
+  box-shadow: none;
+  background: none;
+}
+
+.ob-affix .ob-input:focus {
+  box-shadow: none;
+}
+
+/* The affix already shows focus on its own border via :focus-within. Letting
+ * the generic focus ring draw as well stamps a second rounded outline inside
+ * the field, cutting across the € prefix. */
+.ob-affix .ob-input:focus-visible {
+  outline: none;
+}
+
+/* --------------------------------------------------------------------------
+ * Autocomplete (screen 1)
+ * -------------------------------------------------------------------------- */
+.ob-autocomplete {
+  position: relative;
+}
+
+.ob-autocomplete__list {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--ob-radius-field);
+  background: var(--color-white);
+  box-shadow: 0 12px 40px rgba(26, 26, 26, 0.13);
+  max-height: 290px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.ob-autocomplete__list[hidden] {
+  display: none;
+}
+
+.ob-autocomplete__item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 12px 13px;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  font-family: inherit;
+  font-size: 15px;
+  color: var(--color-ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ob-autocomplete__item:hover,
+.ob-autocomplete__item[aria-selected="true"] {
+  background: var(--color-gray-50);
+}
+
+.ob-autocomplete__pin {
+  flex: none;
+  color: var(--color-accent);
+}
+
+.ob-autocomplete__meta {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--color-gray-400);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------------------------
+ * Budget slider (screen 2)
+ * -------------------------------------------------------------------------- */
+.ob-budget__amount {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px;
+  margin-bottom: 6px;
+  font-family: "Inter Tight", "Inter Tight Placeholder", sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--color-ink);
+}
+
+.ob-budget__value {
+  font-size: clamp(46px, 13vw, 64px);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.ob-budget__unit {
+  font-size: 24px;
+  color: var(--color-gray-500);
+}
+
+.ob-budget__caption {
+  margin-bottom: 30px;
+  font-size: 14.5px;
+  color: var(--color-ink-muted);
+  text-align: center;
+  min-height: 21px;
+}
+
+.ob-slider {
+  position: relative;
+  padding: 10px 0 4px;
+}
+
+.ob-slider__track {
+  position: relative;
+  height: 14px;
+  border-radius: var(--ob-radius-pill);
+  background: var(--color-gray-100);
+  box-shadow: inset 0 1px 2px rgba(26, 26, 26, 0.07);
+}
+
+.ob-slider__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: var(--ob-radius-pill);
+  background: linear-gradient(180deg, #ffa14d 0%, var(--color-accent) 60%, #e86e00 100%);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.5);
+}
+
+.ob-slider__thumb {
+  position: absolute;
+  top: 50%;
+  width: 34px;
+  height: 34px;
+  margin-left: -17px;
+  border-radius: 50%;
+  background: var(--color-white);
+  box-shadow: 0 1px 2px rgba(26, 26, 26, 0.16), 0 6px 16px rgba(26, 26, 26, 0.18),
+    inset 0 -1px 2px rgba(26, 26, 26, 0.06);
+  transform: translateY(-50%);
+  transition: transform 140ms var(--ob-ease-out), box-shadow 140ms var(--ob-ease);
+  pointer-events: none;
+}
+
+.ob-slider__thumb::after {
+  content: "";
+  position: absolute;
+  inset: 11px;
+  border-radius: 50%;
+  background: var(--color-accent);
+}
+
+.ob-slider.is-dragging .ob-slider__thumb {
+  transform: translateY(-50%) scale(1.14);
+  box-shadow: 0 1px 2px rgba(26, 26, 26, 0.16), 0 10px 26px rgba(26, 26, 26, 0.24),
+    0 0 0 10px rgba(255, 122, 0, 0.13);
+}
+
+/* The real input sits on top, invisible: it carries keyboard, screen reader and
+ * touch semantics for free, while the layers above provide the look. */
+.ob-slider__input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 44px; /* a comfortable finger target regardless of the visual track */
+  top: 50%;
+  transform: translateY(-50%);
+  margin: 0;
+  opacity: 0;
+  cursor: grab;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.ob-slider__input:active {
+  cursor: grabbing;
+}
+
+.ob-slider__input:focus-visible ~ .ob-slider__thumb {
+  box-shadow: 0 6px 16px rgba(26, 26, 26, 0.18), 0 0 0 5px rgba(26, 26, 26, 0.18);
+}
+
+.ob-slider__scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--color-gray-400);
+  font-variant-numeric: tabular-nums;
+}
+
+.ob-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.ob-chip {
+  padding: 9px 15px;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--ob-radius-pill);
+  background: var(--color-white);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-ink-muted);
+  cursor: pointer;
+  transition: all 160ms var(--ob-ease);
+}
+
+.ob-chip:hover {
+  border-color: var(--color-gray-400);
+  color: var(--color-ink);
+}
+
+.ob-chip[data-selected="true"] {
+  border-color: var(--color-ink);
+  background: var(--color-ink);
+  color: var(--color-white);
+}
+
+/* --------------------------------------------------------------------------
+ * Date (screen 4)
+ * -------------------------------------------------------------------------- */
+.ob-date__divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 22px 0;
+  font-size: 13px;
+  color: var(--color-gray-400);
+}
+
+.ob-date__divider::before,
+.ob-date__divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--color-border);
+}
+
+/* --------------------------------------------------------------------------
+ * The aha moment
+ * -------------------------------------------------------------------------- */
+.ob-aha {
+  text-align: center;
+}
+
+.ob-aha__count {
+  font-family: "Inter Tight", "Inter Tight Placeholder", sans-serif;
+  font-size: clamp(58px, 17vw, 84px);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  color: var(--color-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.ob-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 26px;
+  text-align: left;
+}
+
+@media (min-width: 560px) {
+  .ob-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.ob-listing {
+  position: relative;
+  border-radius: var(--ob-radius-card);
+  background: var(--color-white);
+  box-shadow: var(--ob-shadow-card);
+  overflow: hidden;
+  animation: ob-pop 460ms var(--ob-ease-out) both;
+}
+
+@keyframes ob-pop {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.ob-listing__photo {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+}
+
+/* Procedural artwork: no stock photography is shipped, and a grey box would
+ * undercut the moment. Two gradients and a skyline read as "a photo you can
+ * almost make out", which is exactly the intent of a blurred preview.
+ *
+ * Shared by the hook's background wall and the listing grid, so the promise on
+ * screen 0 is made of the same material as the payoff four screens later. */
+.ob-art {
+  position: relative;
+  background:
+    radial-gradient(120% 80% at 22% 12%, rgba(255, 255, 255, 0.55), transparent 60%),
+    linear-gradient(
+      165deg,
+      hsl(var(--hue) 46% 74%) 0%,
+      hsl(var(--hue) 34% 56%) 52%,
+      hsl(calc(var(--hue) + 22) 30% 38%) 100%
+    );
+}
+
+.ob-listing__art {
+  position: absolute;
+  inset: 0;
+}
+
+.ob-art::after {
+  content: "";
+  position: absolute;
+  inset: 30% 0 0 0;
+  background:
+    linear-gradient(transparent, rgba(20, 16, 12, 0.5)),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.3) 0 7px,
+      transparent 7px 16px,
+      rgba(0, 0, 0, 0.26) 16px 25px,
+      transparent 25px 36px
+    );
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 22%);
+  mask-image: linear-gradient(180deg, transparent, #000 22%);
+}
+
+.ob-listing--locked .ob-listing__photo {
+  filter: blur(7px) saturate(1.2);
+  transform: scale(1.1);
+}
+
+.ob-listing--locked .ob-listing__body {
+  filter: blur(5px);
+  user-select: none;
+}
+
+.ob-listing__body {
+  padding: 12px 13px 14px;
+}
+
+.ob-listing__price {
+  font-family: "Inter Display", "Inter Display Placeholder", sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--color-ink);
+}
+
+.ob-listing__meta {
+  margin-top: 3px;
+  font-size: 13px;
+  line-height: 138%;
+  color: var(--color-gray-500);
+}
+
+.ob-listing__badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  padding: 5px 10px;
+  border-radius: var(--ob-radius-pill);
+  background: rgba(26, 26, 26, 0.82);
+  backdrop-filter: blur(6px);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--color-white);
+  letter-spacing: 0.01em;
+}
+
+/* Sits over the photo but outside it: the blur is a filter on the photo
+ * element, and a filter applies to descendants too - a lock nested inside
+ * would be smeared away along with the image it is meant to be guarding. */
+.ob-listing__lock {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  aspect-ratio: 4 / 3;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  color: var(--color-white);
+  pointer-events: none;
+}
+
+.ob-listing__lock svg {
+  width: 26px;
+  height: 26px;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.45));
+}
+
+/* --------------------------------------------------------------------------
+ * Solvency verdict (screen 7)
+ * -------------------------------------------------------------------------- */
+.ob-verdict {
+  display: flex;
+  gap: 14px;
+  margin-top: 22px;
+  padding: 17px 18px;
+  border-radius: var(--ob-radius-card);
+  border: 1.5px solid;
+  animation: ob-pop 420ms var(--ob-ease-out) both;
+}
+
+.ob-verdict--strong {
+  border-color: rgba(31, 141, 74, 0.3);
+  background: rgba(31, 141, 74, 0.07);
+}
+
+/* Never styled as an error: a thin file is a situation to solve, not a
+ * failure. Same neutral-positive treatment, different guidance. */
+.ob-verdict--guarantor {
+  border-color: rgba(255, 122, 0, 0.34);
+  background: rgba(255, 122, 0, 0.07);
+}
+
+.ob-verdict__icon {
+  flex: none;
+  font-size: 20px;
+  line-height: 1.3;
+}
+
+.ob-verdict__title {
+  font-family: "Inter Display", "Inter Display Placeholder", sans-serif;
+  font-size: 15.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--color-ink);
+}
+
+.ob-verdict__text {
+  margin-top: 3px;
+  font-size: 14px;
+  line-height: 148%;
+  color: var(--color-ink-muted);
+}
+
+/* --------------------------------------------------------------------------
+ * The manual-first shortcut block
+ *
+ * Deliberately below the fields, deliberately not a button: on identity,
+ * income and address screens the camera is an offer, never the default path.
+ * -------------------------------------------------------------------------- */
+.ob-shortcut {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-border);
+}
+
+.ob-shortcut__label {
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-gray-400);
+}
+
+.ob-shortcut__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ob-shortcut__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 16px;
+  border: 1.5px dashed var(--color-border);
+  border-radius: var(--ob-radius-pill);
+  background: none;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-ink-muted);
+  cursor: pointer;
+  transition: all 160ms var(--ob-ease);
+}
+
+.ob-shortcut__btn:hover {
+  border-color: var(--color-gray-400);
+  border-style: solid;
+  background: var(--color-white);
+  color: var(--color-ink);
+}
+
+.ob-shortcut__btn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* --------------------------------------------------------------------------
+ * File upload (screen 10)
+ * -------------------------------------------------------------------------- */
+.ob-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 28px 20px;
+  border: 1.5px dashed var(--color-border);
+  border-radius: var(--ob-radius-card);
+  background: var(--color-white);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 160ms var(--ob-ease), background-color 160ms var(--ob-ease);
+}
+
+.ob-drop:hover,
+.ob-drop.is-over {
+  border-color: var(--color-ink);
+  background: var(--color-gray-50);
+}
+
+.ob-drop__icon {
+  font-size: 26px;
+}
+
+.ob-drop__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.ob-drop__hint {
+  font-size: 13px;
+  color: var(--color-gray-400);
+}
+
+.ob-file {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 13px 15px;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--ob-radius-field);
+  background: var(--color-white);
+  animation: ob-pop 320ms var(--ob-ease-out) both;
+}
+
+.ob-file__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14.5px;
+  font-weight: 500;
+}
+
+.ob-file__size {
+  font-size: 13px;
+  color: var(--color-gray-400);
+  font-variant-numeric: tabular-nums;
+}
+
+.ob-file__remove {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--color-gray-50);
+  color: var(--color-ink-muted);
+  cursor: pointer;
+}
+
+.ob-file__remove:hover {
+  background: var(--color-gray-100);
+  color: var(--color-ink);
+}
+
+/* --------------------------------------------------------------------------
+ * Screen 0 - the hook
+ * -------------------------------------------------------------------------- */
+.ob-hook {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100svh;
+  padding: 32px var(--ob-gutter) calc(32px + env(safe-area-inset-bottom));
+  overflow: hidden;
+  text-align: center;
+}
+
+.ob-hook__bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* The blurred inventory behind the hook: the promise, made visible before a
+ * single question is asked. */
+.ob-hook__tiles {
+  position: absolute;
+  inset: -10%;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(clamp(116px, 13vw, 176px), 1fr));
+  grid-auto-rows: 1fr;
+  gap: 13px;
+  filter: blur(13px) saturate(1.18);
+  opacity: 0.66;
+}
+
+.ob-hook__tile {
+  border-radius: 18px;
+  min-height: clamp(96px, 15vh, 150px);
+  animation: ob-float 12s var(--ob-ease) infinite alternate;
+}
+
+@keyframes ob-float {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-14px);
+  }
+}
+
+.ob-hook__scrim {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+      58% 46% at 50% 46%,
+      color-mix(in srgb, var(--color-surface) 90%, transparent) 0%,
+      color-mix(in srgb, var(--color-surface) 52%, transparent) 62%,
+      transparent 100%
+    ),
+    linear-gradient(180deg, var(--color-surface) 0%, transparent 22%, transparent 74%, var(--color-surface) 100%);
+}
+
+.ob-hook__content {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  max-width: 520px;
+}
+
+.ob-hook__title {
+  font-family: "Inter Tight", "Inter Tight Placeholder", sans-serif;
+  font-weight: 600;
+  font-size: clamp(34px, 9vw, 50px);
+  line-height: 112%;
+  letter-spacing: -0.028em;
+  text-wrap: balance;
+}
+
+.ob-hook__title em {
+  font-family: "Instrument Serif", serif;
+  font-style: italic;
+  font-weight: 400;
+  color: var(--color-accent);
+}
+
+.ob-hook__sub {
+  margin: 16px auto 30px;
+  max-width: 400px;
+  font-size: 16.5px;
+  line-height: 152%;
+  color: var(--color-ink-muted);
+  text-wrap: pretty;
+}
+
+.ob-hook__cta {
+  max-width: 380px;
+  margin: 0 auto;
+}
+
+.ob-hook__trust {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 18px;
+  font-size: 13.5px;
+  color: var(--color-gray-500);
+}
+
+/* The interactive map: a hand-drawn arrondissement mesh, tinted to the brand.
+ * Chosen over real tiles because it needs no key, no vendor and no payload,
+ * and because a real map of a city the visitor has not chosen yet says less
+ * than an abstract one that reacts to the cursor. */
+.ob-map {
+  width: 100%;
+  max-width: 300px;
+  margin: 0 auto 24px;
+  display: block;
+  overflow: visible;
+}
+
+.ob-map__cell {
+  fill: var(--color-white);
+  stroke: var(--color-border);
+  stroke-width: 1.2;
+  transition: fill 420ms var(--ob-ease), transform 420ms var(--ob-ease-out);
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.ob-map__cell.is-hot {
+  fill: rgba(255, 122, 0, 0.16);
+  stroke: var(--color-accent);
+  transform: translateY(-2px);
+}
+
+.ob-map__pin {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ob-pin 2.6s var(--ob-ease) infinite;
+}
+
+@keyframes ob-pin {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-5px) scale(1.08);
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * Final screen
+ * -------------------------------------------------------------------------- */
+.ob-done {
+  text-align: center;
+}
+
+.ob-done__seal {
+  display: grid;
+  place-items: center;
+  width: 96px;
+  height: 96px;
+  margin: 0 auto 24px;
+  border-radius: 50%;
+  background: linear-gradient(160deg, #ffa14d, var(--color-accent));
+  box-shadow: 0 10px 30px rgba(255, 122, 0, 0.34), inset 0 2px 3px rgba(255, 255, 255, 0.5);
+  animation: ob-seal 700ms var(--ob-ease-out) both;
+}
+
+@keyframes ob-seal {
+  0% {
+    opacity: 0;
+    transform: scale(0.4) rotate(-25deg);
+  }
+  60% {
+    transform: scale(1.1) rotate(4deg);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.ob-done__seal svg {
+  width: 44px;
+  height: 44px;
+  color: var(--color-white);
+}
+
+.ob-checklist {
+  display: grid;
+  gap: 9px;
+  margin: 26px 0 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+
+.ob-checklist li {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 13px 15px;
+  border-radius: var(--ob-radius-field);
+  background: var(--color-white);
+  box-shadow: var(--ob-shadow-card);
+  font-size: 14.5px;
+  font-weight: 500;
+  animation: ob-pop 420ms var(--ob-ease-out) both;
+}
+
+.ob-checklist li span[aria-hidden] {
+  color: #1f8d4a;
+  font-size: 15px;
+}
+
+.ob-confetti {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.ob-confetti i {
+  position: absolute;
+  top: -14px;
+  width: 9px;
+  height: 14px;
+  border-radius: 2px;
+  animation: ob-fall linear forwards;
+}
+
+@keyframes ob-fall {
+  to {
+    transform: translateY(104svh) rotate(680deg);
+    opacity: 0.15;
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * Utilities
+ * -------------------------------------------------------------------------- */
+.ob-spinner {
+  width: 17px;
+  height: 17px;
+  border: 2px solid rgba(255, 255, 255, 0.32);
+  border-top-color: var(--color-white);
+  border-radius: 50%;
+  animation: ob-spin 700ms linear infinite;
+}
+
+@keyframes ob-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ob-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.ob :focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.ob-note {
+  display: flex;
+  gap: 9px;
+  margin-top: 18px;
+  padding: 13px 15px;
+  border-radius: var(--ob-radius-field);
+  background: var(--color-gray-50);
+  font-size: 13.5px;
+  line-height: 148%;
+  color: var(--color-ink-muted);
+}
+
+.ob-note__icon {
+  flex: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ob *,
+  .ob-hook * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

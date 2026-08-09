@@ -1,0 +1,45 @@
+---
+import Base from '../layouts/Base.astro';
+
+// Same convention as every other page: plain stylesheets, linked in an explicit
+// order so the cascade is predictable. fonts and tokens come first because the
+// onboarding stylesheet consumes both.
+const styles = ['/styles/fonts.css', '/styles/tokens.css', '/styles/onboarding.css'];
+
+const meta = {
+  title: 'Trouve ton appart en 30 secondes | Prems',
+  description:
+    "Quatre questions, aucun compte à créer. Prems te montre les appartements qui matchent tes critères avant de te demander quoi que ce soit.",
+  ogTitle: 'Trouve ton appart en 30 secondes | Prems',
+  ogDescription:
+    'Quatre questions, aucun compte à créer. Découvre les appartements qui matchent tes critères.',
+  lang: 'fr',
+};
+---
+
+<Base meta={meta} styles={styles}>
+  <div class="ob" id="onboarding">
+    <!--
+      The shell is built by the controller rather than authored here: every
+      screen shares one header and one footer, and rendering them from a single
+      place is what keeps the thirteen questions feeling like one object.
+
+      This fallback is what a visitor without JavaScript sees.
+    -->
+    <noscript>
+      <div style="max-width:560px;margin:0 auto;padding:64px 20px;text-align:center">
+        <h1 style="font-family:'Inter Tight',sans-serif;font-size:32px;letter-spacing:-0.02em">
+          Active JavaScript pour continuer
+        </h1>
+        <p style="color:#4d4d4d;line-height:1.55;margin-top:12px">
+          Le parcours Prems se déroule écran par écran et a besoin de JavaScript.
+          Tu peux aussi nous écrire depuis la <a href="/contact">page contact</a>.
+        </p>
+      </div>
+    </noscript>
+  </div>
+
+  <script>
+    import '../scripts/onboarding/index.js';
+  </script>
+</Base>

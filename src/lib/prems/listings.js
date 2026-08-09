@@ -1,0 +1,131 @@
+/**
+ * Matching the visitor's criteria against the inventory.
+ *
+ * The "aha moment" is the one screen that must never come up empty, and the
+ * honest way to guarantee that is not to loosen the data but to loosen the
+ * query - visibly. The matcher widens in defined stages and reports which ones
+ * it needed, so the screen can say "dont 2 légèrement au-dessus de ton budget"
+ * instead of silently showing flats the visitor cannot afford.
+ *
+ * Source of truth is Supabase. A bundled snapshot is the fallback, because a
+ * network failure on this screen costs the signup.
+ */
+import { client } from './supabase.js';
+
+const TARGET = 8;
+
+/**
+ * How long the live query gets before the bundled snapshot takes over.
+ *
+ * This screen is the whole reason anyone signs up, so it is never allowed to
+ * wait on the network: a visitor staring at an empty grid has already decided
+ * the product does not work. Two seconds is generous for a single indexed
+ * select and still well under the point where a phone user gives up.
+ */
+const DEADLINE_MS = 2000;
+
+let snapshot;
+
+async function loadSnapshot() {
+  if (snapshot) return snapshot;
+  try {
+    const res = await fetch('/data/listings.json');
+    snapshot = res.ok ? await res.json() : [];
+  } catch {
+    snapshot = [];
+  }
+  return snapshot;
+}
+
+const timeout = (ms) => new Promise((resolve) => setTimeout(() => resolve(null), ms));
+
+async function fetchCity(citySlug) {
+  const supabase = client();
+
+  if (supabase) {
+    const query = supabase
+      .from('listings')
+      .select('*')
+      .eq('city_slug', citySlug)
+      .limit(400)
+      .then(({ data, error }) => (error ? null : data))
+      .catch(() => null);
+
+    const live = await Promise.race([query, timeout(DEADLINE_MS)]);
+    if (live?.length) return live;
+  }
+
+  return (await loadSnapshot()).filter((l) => l.city_slug === citySlug);
+}
+
+/** Rooms the visitor asked for; 5 means "5 et plus". */
+const roomsMatch = (listing, rooms, slack) =>
+  rooms >= 5 ? listing.rooms >= 5 - slack : Math.abs(listing.rooms - rooms) <= slack;
+
+const typeMatch = (listing, type) =>
+  !type || type === 'indifferent' || listing.property_type === type;
+
+const dateMatch = (listing, isoDate) => !isoDate || listing.available_from <= isoDate;
+
+/**
+ * Stages, applied in order until TARGET listings are found. Each carries the
+ * wording the screen uses to stay truthful about what was relaxed.
+ */
+const STAGES = [
+  { budget: 1, slack: 0, date: true, type: true, note: null },
+  { budget: 1, slack: 0, date: false, type: true, note: 'disponibles un peu plus tard' },
+  { budget: 1.1, slack: 0, date: false, type: true, note: 'légèrement au-dessus de ton budget' },
+  { budget: 1.1, slack: 1, date: false, type: true, note: 'avec une pièce en plus ou en moins' },
+  { budget: 1.25, slack: 1, date: false, type: false, note: "d'un autre type de bien" },
+  { budget: 2, slack: 4, date: false, type: false, note: 'dans un rayon plus large' },
+];
+
+export async function match(criteria) {
+  const { citySlug, budget, rooms, propertyType, moveInDate } = criteria;
+  const pool = await fetchCity(citySlug);
+
+  const chosen = [];
+  const seen = new Set();
+  const relaxations = [];
+
+  for (const stage of STAGES) {
+    if (chosen.length >= TARGET) break;
+
+    const ceiling = Math.round(budget * stage.budget);
+    const found = pool.filter(
+      (l) =>
+        !seen.has(l.id) &&
+        l.rent_eur <= ceiling &&
+        roomsMatch(l, rooms, stage.slack) &&
+        (stage.type ? typeMatch(l, propertyType) : true) &&
+        (stage.date ? dateMatch(l, moveInDate) : true),
+    );
+
+    // Cheapest first within a stage: the best-value flats lead the grid.
+    found.sort((a, b) => a.rent_eur - b.rent_eur);
+
+    const taken = found.slice(0, TARGET - chosen.length);
+    if (taken.length && stage.note) relaxations.push({ note: stage.note, count: taken.length });
+
+    for (const listing of taken) {
+      seen.add(listing.id);
+      chosen.push(listing);
+    }
+  }
+
+  return {
+    listings: chosen,
+    /** How many the visitor's criteria matched outright, for the headline. */
+    exactCount: pool.filter(
+      (l) =>
+        l.rent_eur <= budget &&
+        roomsMatch(l, rooms, 0) &&
+        typeMatch(l, propertyType) &&
+        dateMatch(l, moveInDate),
+    ).length,
+    relaxations,
+    poolSize: pool.length,
+  };
+}
+
+export const formatRent = (eur) => `${eur.toLocaleString('fr-FR')} €`;

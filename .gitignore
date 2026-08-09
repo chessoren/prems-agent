@@ -5,3 +5,7 @@ dist/
 # Pipeline working directory: raw snapshots, mirrored Framer bundles,
 # reference/clone screenshots and diffs. All regenerable via npm run clone:*.
 .cache/
+
+# Secrets. Never commit: the service role key bypasses every RLS policy.
+.env
+.env.local

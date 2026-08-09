@@ -13,7 +13,11 @@
     "clone:faq": "node tools/6-faq.mjs",
     "clone:generate": "node tools/4-generate.mjs",
     "clone:verify": "node tools/5-verify.mjs",
-    "shots": "node tools/preview-shots.mjs"
+    "shots": "node tools/preview-shots.mjs",
+    "db:provision": "NODE_USE_ENV_PROXY=1 node tools/supabase/provision.mjs",
+    "db:seed": "NODE_USE_ENV_PROXY=1 node tools/supabase/seed-listings.mjs",
+    "shots:onboarding": "NODE_USE_ENV_PROXY=1 node tools/onboarding-shots.mjs",
+    "ctas:retarget": "node tools/retarget-ctas.mjs"
   },
   "repository": {
     "type": "git",
@@ -35,6 +39,7 @@
     "prettier": "^3.9.6"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.2",
     "astro": "^5.18.2"
   },
   "type": "module",
