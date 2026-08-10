@@ -27,6 +27,31 @@ interface Props {
 
 const { meta, appear = null, styles = [] } = Astro.props;
 const lang = meta.lang || 'fr';
+
+/**
+ * The origin this site is actually served from.
+ *
+ * Every page came out of the export declaring https://prems.framer.ai as its
+ * canonical. Left alone, the production site would tell search engines that the
+ * Framer original is the real version of every page - which is the fastest way
+ * to not get indexed at all. The canonical is therefore derived from the page's
+ * own path against the deployed origin, not copied from the export.
+ */
+const SITE = import.meta.env.PUBLIC_SITE_URL || Astro.site?.href || '';
+
+const canonical = SITE ? new URL(Astro.url.pathname, SITE).href : meta.canonical;
+
+/**
+ * The social preview card, drawn by tools/make-og-image.mjs.
+ *
+ * The exported og:image came from the Framer template and showed a different
+ * product - an email SaaS dashboard - so every Prems link shared anywhere
+ * carried a screenshot of someone else's app. It also lived on
+ * framerusercontent.com and weighed 7.3 MB, past the point where X drops the
+ * card entirely. Pages may still override it; nothing does today.
+ */
+const ogImagePath = meta.ogImage?.startsWith('/') ? meta.ogImage : '/assets/og/prems.jpg';
+const ogImage = SITE ? new URL(ogImagePath, SITE).href : ogImagePath;
 ---
 
 <!doctype html>
@@ -36,10 +61,13 @@ const lang = meta.lang || 'fr';
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{meta.title}</title>
     {meta.description && <meta name="description" content={meta.description} />}
-    {meta.canonical && <link rel="canonical" href={meta.canonical} />}
+    {canonical && <link rel="canonical" href={canonical} />}
     {meta.ogTitle && <meta property="og:title" content={meta.ogTitle} />}
     {meta.ogDescription && <meta property="og:description" content={meta.ogDescription} />}
-    {meta.ogImage && <meta property="og:image" content={meta.ogImage} />}
+    {ogImage && <meta property="og:image" content={ogImage} />}
+    {canonical && <meta property="og:url" content={canonical} />}
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="generator" content="Astro" />
     {styles.map((href) => <link rel="stylesheet" href={href} />)}
   </head>
