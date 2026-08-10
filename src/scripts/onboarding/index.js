@@ -11,6 +11,7 @@
  */
 import { SCREENS, ORDER } from './screens.js';
 import * as store from '../../lib/prems/store.js';
+import { ensureSession } from '../../lib/prems/supabase.js';
 import { track } from '../../lib/prems/analytics.js';
 import { h, ICONS, button, setLoading } from './ui.js';
 
@@ -94,6 +95,13 @@ function render(id) {
   currentId = id;
   store.set({ step: id });
   track(id, 'view');
+
+  // Publish the current screen on the shell so the stylesheet can treat screens
+  // differently where it matters. On a wide viewport the questions want a
+  // narrow, readable measure while the results grid wants room to breathe -
+  // one shell width cannot serve both, and CSS has no other way to tell them
+  // apart.
+  root.dataset.screen = id;
 
   let primary = null;
 
@@ -219,17 +227,66 @@ function back() {
 /* -------------------------------------------------------------------------
  * Boot
  * ------------------------------------------------------------------------- */
+/**
+ * Can this screen be shown as an entry point?
+ *
+ * Every screen past the first question renders answers given before it - the
+ * results screen says "À {ville}, tous dans ton budget". Deep-linking straight
+ * into one with an empty draft printed "À null" and a count of zero, which is
+ * the flow's best moment turned into a bug report. A stale hash from weeks ago
+ * lands here too, not just a hand-typed URL.
+ *
+ * The city is the right thing to test: it is the first answer collected, so
+ * having it means the visitor genuinely started the flow.
+ */
+function canResume(id) {
+  const index = ORDER.indexOf(id);
+  if (index <= ORDER.indexOf('city')) return true;
+  return Boolean(store.get().citySlug);
+}
+
 function initialScreen() {
-  const fromHash = location.hash.slice(1);
-  if (fromHash && SCREENS[fromHash]) {
-    // Returning from Google OAuth, or a shared link. Rebuild a plausible
-    // history so the back control is not a dead end.
+  // Coming back from Google. The target rides in `?next=` because the fragment
+  // is not ours alone on this URL: Supabase puts `?code=` on it too, and the
+  // two used to collide into `#employment?code=...`, which matched no screen
+  // and sent the visitor back to the first one without a word.
+  //
+  // `code` is deliberately left in the URL - supabase-js reads it
+  // asynchronously to exchange the session, and strips it itself once done.
+  const params = new URLSearchParams(location.search);
+  const next = params.get('next');
+  if (next && SCREENS[next] && canResume(next)) {
+    history = ORDER.slice(0, ORDER.indexOf(next));
+    params.delete('next');
+    const query = params.toString();
+    window.history.replaceState(
+      null,
+      '',
+      `${location.pathname}${query ? `?${query}` : ''}#${next}`,
+    );
+
+    // Google just gave us an identity, so the account screen never ran. Create
+    // the profile row here instead, or the answers collected from now on would
+    // have nothing to attach to. Not awaited, for the same reason as screen 5.
+    ensureSession()
+      .then(() => store.sync())
+      .catch(() => {});
+
+    return next;
+  }
+
+  // Split on "?" so a link produced by the older, broken redirect still lands
+  // on the right screen rather than on the hook.
+  const fromHash = location.hash.slice(1).split('?')[0];
+  if (fromHash && SCREENS[fromHash] && canResume(fromHash)) {
+    // Returning from a shared link. Rebuild a plausible history so the back
+    // control is not a dead end.
     history = ORDER.slice(0, ORDER.indexOf(fromHash));
     return fromHash;
   }
 
   const saved = store.get().step;
-  if (saved && SCREENS[saved] && saved !== 'hook') {
+  if (saved && SCREENS[saved] && saved !== 'hook' && canResume(saved)) {
     history = ORDER.slice(0, ORDER.indexOf(saved));
     return saved;
   }
@@ -238,7 +295,11 @@ function initialScreen() {
 
 window.addEventListener('hashchange', () => {
   const id = location.hash.slice(1);
-  if (id && SCREENS[id] && id !== currentId) {
+  // The same prerequisite check as the boot path. Changing only the fragment is
+  // a same-document navigation, so a link or a browser Back into a later screen
+  // arrives here without ever passing through initialScreen() - guarding one
+  // and not the other left the hole wide open.
+  if (id && SCREENS[id] && id !== currentId && canResume(id)) {
     direction = 'back';
     render(id);
   }

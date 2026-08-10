@@ -685,9 +685,16 @@ const account = {
         onClick: async () => {
           const supabase = client();
           if (!supabase) return;
+          // The return target travels as a query parameter, never as a
+          // fragment. Supabase appends `?code=` to redirectTo on the way back,
+          // and a redirectTo that already carried `#employment` produced
+          // `#employment?code=...` - a fragment matching no screen, which
+          // dropped the visitor back on the first screen with no error shown.
+          // The trailing slash matches Astro's directory build and avoids a
+          // redirect hop before the code is read.
           const { error } = await supabase.auth.signInWithOAuth({
             provider: 'google',
-            options: { redirectTo: `${location.origin}/onboarding#employment` },
+            options: { redirectTo: `${location.origin}/onboarding/?next=employment` },
           });
           if (error) {
             showError(
