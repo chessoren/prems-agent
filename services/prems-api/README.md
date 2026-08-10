@@ -44,9 +44,18 @@ sûre d'elle reste ainsi une gêne corrigeable, pas un dossier erroné.
 
 Sur les bulletins français, le *Expense Parser* renvoie fréquemment le brut ou un
 total de ligne plutôt que ce qui arrive sur le compte. Le libellé imprimé est
-bien plus fiable : la lecture des mentions (« NET À PAYER », « NET PAYÉ »…) est
-donc la source principale, le parseur ne sert qu'à corroborer. Le champ `source`
-indique laquelle a produit le chiffre.
+bien plus fiable — mais « le montant à côté du libellé » est une propriété
+**géométrique**, pas textuelle : un bulletin est un tableau, et l'OCR le
+sérialise souvent colonne par colonne, si bien que le texte qui suit
+« NET À PAYER » peut être le brut de trois lignes plus haut. Le montant est donc
+lu sur la **même rangée** que le libellé, d'après la position des jetons.
+
+Un bulletin de test à 2 450 € net remontait 3 150 € — le brut — avec l'ancienne
+heuristique textuelle. C'est ce que cette lecture géométrique empêche.
+
+Quand la rangée ne donne rien, le champ revient **vide** plutôt que rempli par
+le parseur seul : un salaire faux mais plausible, que la personne ne remarque
+pas, est bien pire qu'un champ à saisir soi-même.
 
 ## Déploiement
 

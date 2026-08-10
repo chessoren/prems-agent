@@ -127,8 +127,15 @@ function guessDocumentType(text) {
  *
  * The Expense Parser is built for receipts, and on a French bulletin de paie it
  * frequently returns the gross or a line total rather than what lands in the
- * bank account. The printed wording is far more reliable here, so the label
- * scan leads and the parser only corroborates.
+ * bank account. The printed wording is far more reliable, so the label leads.
+ *
+ * But "the amount printed next to the label" is a geometric statement, not a
+ * textual one. A payslip is a table, and the OCR often serialises it column by
+ * column - every label, then every figure - so the text immediately after
+ * "NET À PAYER" can be the gross from three rows up. Reading the row from the
+ * token positions is the only way to mean what we say. A synthetic payslip
+ * reading 2 450 € net came back as the 3 150 € gross under the text-order
+ * heuristic; that is the failure this exists to prevent.
  * ------------------------------------------------------------------------- */
 const NET_LABELS = [
   /net\s+à\s+payer\s+avant\s+imp[oô]t\s+sur\s+le\s+revenu/i,
@@ -139,56 +146,104 @@ const NET_LABELS = [
   /net\s+social/i,
 ];
 
-/** French amounts: 2 345,67 / 2.345,67 / 2345.67 */
-const AMOUNT = /(\d{1,3}(?:[  . ]\d{3})*|\d+)(?:[,.](\d{2}))?/;
+/**
+ * A French amount, and nothing that merely starts like one.
+ *
+ * The lookarounds matter: without them `\d{1,3}` happily matches "315" inside
+ * "3150,00" and silently reports a tenth of the salary.
+ */
+const AMOUNT = /(?<!\d)(\d{1,3}(?:[\s.\u00a0]\d{3})+|\d+)(?:[,.](\d{2}))?(?!\d)/;
 
-function amountsNearLabels(text) {
-  const found = [];
-  for (const label of NET_LABELS) {
+export function parseAmount(text) {
+  const match = AMOUNT.exec(text);
+  if (!match) return null;
+  const whole = match[1].replace(/[\s.\u00a0]/g, '');
+  const value = Number(`${whole}.${match[2] ?? '00'}`);
+  // A monthly net outside this range is a page number or a SIRET, not a salary.
+  return Number.isFinite(value) && value > 100 && value < 100000 ? value : null;
+}
+
+/** Tokens with their text span and position on the page. */
+function layoutTokens(document) {
+  const text = document.text || '';
+  const tokens = [];
+
+  for (const page of document.pages || []) {
+    for (const token of page.tokens || []) {
+      const segment = token.layout?.textAnchor?.textSegments?.[0];
+      if (!segment) continue;
+
+      const vertices = token.layout?.boundingPoly?.normalizedVertices || [];
+      if (!vertices.length) continue;
+
+      const ys = vertices.map((v) => v.y ?? 0);
+      const xs = vertices.map((v) => v.x ?? 0);
+      const top = Math.min(...ys);
+      const bottom = Math.max(...ys);
+
+      tokens.push({
+        start: Number(segment.startIndex ?? 0),
+        end: Number(segment.endIndex ?? 0),
+        text: text.slice(Number(segment.startIndex ?? 0), Number(segment.endIndex ?? 0)),
+        y: (top + bottom) / 2,
+        x: (Math.min(...xs) + Math.max(...xs)) / 2,
+        height: bottom - top,
+      });
+    }
+  }
+  return tokens;
+}
+
+/**
+ * The net figure printed on the same row as the most specific label found.
+ *
+ * Amounts are read from the row's joined text rather than token by token,
+ * because "2 450,00" is frequently two tokens.
+ */
+export function netFromRow(document) {
+  const text = document.text || '';
+  const tokens = layoutTokens(document);
+  if (!tokens.length) return null;
+
+  for (const [priority, label] of NET_LABELS.entries()) {
     const match = label.exec(text);
     if (!match) continue;
 
-    // Look only just past the label: payslips put the figure on the same line
-    // or the next one, and widening the window starts catching neighbouring
-    // columns like the employer's contribution.
-    const window = text.slice(match.index + match[0].length, match.index + match[0].length + 90);
-    const amount = AMOUNT.exec(window);
-    if (!amount) continue;
+    const anchor = tokens.find((t) => t.start <= match.index && t.end > match.index);
+    if (!anchor) continue;
 
-    const whole = amount[1].replace(/[  . ]/g, '');
-    const value = Number(`${whole}.${amount[2] ?? '00'}`);
-    if (Number.isFinite(value) && value > 100 && value < 100000) {
-      found.push({ value, priority: NET_LABELS.indexOf(label) });
-    }
+    const tolerance = Math.max(anchor.height * 0.6, 0.004);
+    const rest = tokens
+      .filter((t) => Math.abs(t.y - anchor.y) <= tolerance && t.start >= match.index + match[0].length)
+      .sort((a, b) => a.start - b.start)
+      .map((t) => t.text)
+      .join(' ');
+
+    const value = parseAmount(rest);
+    if (value != null) return { value, priority };
   }
-  // Earlier labels are more specific, so they win.
-  found.sort((a, b) => a.priority - b.priority);
-  return found;
+  return null;
 }
 
 export async function readPayslip(bytes, mimeType) {
   const document = await process(config.documentAi.payslipProcessorId, bytes, mimeType);
   const entities = index(document);
-  const text = document.text || '';
 
-  const fromLabels = amountsNearLabels(text);
+  const fromRow = netFromRow(document);
   const netEntity = pick(entities, 'net_amount', 'total_amount', 'net_pay');
   const fromParser = Number(netEntity?.normalizedValue?.moneyValue?.units) || null;
 
-  const net = fromLabels[0]?.value ?? fromParser;
+  // Deliberately conservative. A plausible wrong salary that the visitor does
+  // not notice is far worse than an empty field they type themselves, so the
+  // figure is only offered when the printed row gives it - the parser alone is
+  // not enough to put a number in front of someone.
+  const agree = fromRow && fromParser && Math.abs(fromRow.value - fromParser) < 2;
 
   return {
-    netMonthlyEuros: net ? Math.round(net) : null,
+    netMonthlyEuros: fromRow ? Math.round(fromRow.value) : null,
     employer: textOf(pick(entities, 'supplier_name', 'employer', 'receiver_name')),
     period: dateOf(pick(entities, 'receipt_date', 'invoice_date', 'pay_period_end')),
-    // A figure the printed label and the parser agree on is worth trusting;
-    // one that only the parser produced is worth flagging to the user.
-    confidence:
-      fromLabels.length && fromParser && Math.abs(fromLabels[0].value - fromParser) < 2
-        ? 0.95
-        : fromLabels.length
-          ? 0.8
-          : confidenceOf(netEntity),
-    source: fromLabels.length ? 'libellé' : 'analyse',
+    confidence: agree ? 0.95 : fromRow ? 0.8 : 0,
+    source: fromRow ? 'libellé' : null,
   };
 }

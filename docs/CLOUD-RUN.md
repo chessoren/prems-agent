@@ -88,9 +88,12 @@ gcloud run services describe prems-api --region europe-west9 \
 
 ## Ce qu'il reste à faire
 
-1. **Lancer le déploiement** ci-dessus.
-2. **Me transmettre l'URL publique** (`https://prems-api-….a.run.app`) → elle va
-   dans `PUBLIC_PREMS_API_URL`, et les trois raccourcis photo s'activent seuls.
+1. **Redéployer** — la lecture du bulletin de paie a été corrigée après le
+   premier déploiement (voir « Ce que le premier scan réel a révélé »). Même
+   commande qu'à l'étape 2.
+2. **Renseigner `PUBLIC_PREMS_API_URL` sur l'hébergement du site.** Le `.env`
+   local ne part pas avec le dépôt : sans cette variable côté Vercel, les
+   raccourcis resteront désactivés en production alors qu'ils marchent en local.
 3. **Corriger le port dans les redirections Supabase.** L'entrée
    `http://localhost:4231/**` comporte une inversion de chiffres : Astro sert
    sur **4321** (`npm run dev` comme `npm run preview`). En l'état, un retour de
@@ -105,7 +108,11 @@ domaine sert au site, le service API garde son URL `run.app` et n'est appelé
 qu'en XHR depuis le navigateur. Un domaine personnalisé sur l'API ne serait utile
 que pour éviter un préconnect supplémentaire — pas prioritaire.
 
-## Vérifications déjà passées
+## Service déployé
+
+`https://prems-api-bhrpp55xqa-od.a.run.app`, région `europe-west9`.
+
+## Vérifications passées
 
 Contre le vrai projet Supabase, avec une session anonyme réelle :
 
@@ -116,6 +123,26 @@ Contre le vrai projet Supabase, avec une session anonyme réelle :
 - propre dossier, fichier absent → `404`
 - préflight CORS : origine autorisée reflétée, origine inconnue refusée
 
-Le seul chemin non exercé de bout en bout est l'appel Document AI lui-même, qui
-demande des identifiants GCP indisponibles depuis l'environnement de
-développement. Il se vérifiera au premier scan réel après déploiement.
+Contre le **service déployé**, avec un envoi réel dans le bucket privé :
+
+- `/health` → `200` (4,2 s au premier appel : démarrage à froid, `min-instances=0`)
+- `/ocr/identity` → `200` en 3,3 s, Document AI joignable
+- `/ocr/payslip` → `200` en 3,2 s
+- `/dossier/verify` → `200` en 0,5 s
+- CORS reflétant `https://prems.getmira.run`
+
+## Ce que le premier scan réel a révélé
+
+Un bulletin de test à **2 450 € net** est remonté à **315 €**. Deux défauts,
+tous deux corrigés et couverts par `npm test` dans le service :
+
+1. L'expression des montants acceptait un préfixe : `\d{1,3}` capturait « 315 »
+   à l'intérieur de « 3150,00 ». Des délimiteurs interdisent désormais toute
+   lecture partielle d'une suite de chiffres.
+2. « Le montant à côté du libellé » est une propriété **géométrique**. Un
+   bulletin est un tableau et l'OCR le sérialise souvent colonne par colonne :
+   le texte suivant « NET À PAYER » était le brut. Le montant est maintenant lu
+   sur la **même rangée**, d'après la position des jetons.
+
+Quand la rangée ne donne rien, le champ revient vide plutôt que rempli par le
+parseur seul.
