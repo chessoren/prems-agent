@@ -12,3 +12,7 @@ dist/
 
 # Service dependencies, installed per-deploy by Cloud Build.
 services/*/node_modules/
+
+# TypeScript build output and incremental state.
+packages/*/dist/
+*.tsbuildinfo
