@@ -53,16 +53,55 @@ gcloud projects add-iam-policy-binding $PROJECT \
   --member="serviceAccount:$SA" --role=roles/aiplatform.user
 ```
 
-### 3. Le modèle Gemini demandé n'existe pas
+### 3. `iam.serviceAccountUser` — bloque le déploiement du scraper
+
+L'image du scraper est construite, poussée sur Artifact Registry et vérifiée en
+exécutant le conteneur contre la vraie base. La création du Cloud Run Job échoue
+sur `iam.serviceaccounts.actAs`, refusé sur **tous** les comptes de service, y
+compris `prems-workers` sur lui-même.
+
+```bash
+PROJECT=gen-lang-client-0781599139
+SA=prems-workers@$PROJECT.iam.gserviceaccount.com
+
+# Autoriser prems-workers à faire tourner des jobs sous sa propre identité
+gcloud iam service-accounts add-iam-policy-binding $SA \
+  --member="serviceAccount:$SA" --role=roles/iam.serviceAccountUser
+
+# Accès au secret depuis le job
+gcloud secrets add-iam-policy-binding supabase-service-role-key \
+  --member="serviceAccount:$SA" --role=roles/secretmanager.secretAccessor
+```
+
+Optionnel, seulement si vous voulez déployer via Cloud Build plutôt qu'en
+poussant l'image à la main (`workers/cloudbuild.yaml` est prêt) :
+`roles/cloudbuild.builds.editor` et `roles/storage.admin`.
+
+Une fois ces rôles posés, le job et le planificateur se créent en une commande :
+
+```bash
+gcloud run jobs deploy prems-scrape-bienici \
+  --image=europe-west9-docker.pkg.dev/$PROJECT/prems/prems-scraper:v1 \
+  --region=europe-west9 --service-account=$SA \
+  --set-env-vars=SOURCE_SLUG=bienici,SUPABASE_URL=https://budbfhrqdeghyufeizpv.supabase.co \
+  --set-secrets=SUPABASE_SERVICE_ROLE_KEY=supabase-service-role-key:latest \
+  --task-timeout=300s --max-retries=1 --memory=512Mi --cpu=1
+
+gcloud scheduler jobs create http prems-scrape-bienici-tick \
+  --location=europe-west9 --schedule="* * * * *" \
+  --uri="https://europe-west9-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/$PROJECT/jobs/prems-scrape-bienici:run" \
+  --http-method=POST --oauth-service-account-email=$SA
+```
+
+### 4. Le modèle Gemini demandé n'existe pas
 
 « Gemini 3.5 Flash-Lite » n'est pas un identifiant réel. La famille Flash-Lite
-existe en `gemini-2.5-flash-lite`. Le code visera **`gemini-2.5-flash-lite`**,
-et la vérification empirique de la liste réellement servie par le projet
-attend le rôle `aiplatform.user` ci-dessus — tous les modèles ont répondu 403,
-donc aucune disponibilité n'est encore confirmée.
+existe en `gemini-2.5-flash-lite`. **Vérifié depuis** : `gemini-2.5-flash-lite` et `gemini-2.5-flash` répondent 200,
+`gemini-3-flash-lite` répond 404 (le modèle n'existe pas). Le code vise
+`gemini-2.5-flash-lite`.
 
-Embeddings : **`text-multilingual-embedding-002`**, 768 dimensions, qui est la
-dimension figée dans `listing_embeddings`. Le corpus est en français ;
+Embeddings : **`text-multilingual-embedding-002`**, vérifié à 768 dimensions,
+qui est la dimension figée dans `listing_embeddings`. Le corpus est en français ;
 `text-embedding-004` est entraîné majoritairement sur de l'anglais.
 
 ---
