@@ -9,7 +9,7 @@
 | Pagination | `from` / `size`, 100 par page |
 | Anti-bot | aucun depuis une IP datacenter américaine |
 | Volume | ~925 000 annonces de location |
-| Canal de candidature | formulaire (`contact_channel = form_post`) — **non encore vérifié par un POST réel** |
+| Canal de candidature | `POST /api/contactRequests` — **endpoint vérifié, non authentifié** |
 
 ## Ce qui a été établi en sondant l'API, pas supposé
 
@@ -60,9 +60,35 @@ Qualité sur les 204 premières annonces d'Île-de-France : 204/204 géocodées,
 189/204 avec DPE. Loyers moyens cohérents par département (Paris 2 316 €,
 Seine-Saint-Denis 894 €).
 
-## Reste à vérifier
+## Le canal de candidature
 
-Le canal de candidature. `contact_channel` est positionné à `form_post` par
-hypothèse ; **aucun POST de contact n'a encore été effectué**. Tant que ce n'est
-pas fait, la source ne satisfait pas le critère « envoi facilité par POST » et
-ne devrait pas être considérée comme complète au sens du MVP.
+Trouvé dans `commonModern.js`, pas deviné : les cinq chemins essayés au hasard
+renvoyaient tous 404.
+
+```
+POST https://www.bienici.com/api/contactRequests
+Content-Type: application/json
+Referer: https://www.bienici.com/
+```
+
+Non authentifié. Une charge vide reçoit un **400** avec un schéma de validation
+qui nomme les champs manquants :
+
+```
+OBJECT_MISSING_REQUIRED_PROPERTY : realEstateAdIds
+OBJECT_MISSING_REQUIRED_PROPERTY : contact
+```
+
+`realEstateAdIds` est un tableau — le même endpoint contacte donc plusieurs
+annonces en une requête.
+
+**Bien'ici satisfait les deux critères du MVP** : lecture par API JSON cachée,
+et envoi par POST HTTP simple. Pas de navigateur, pas de captcha sur ce chemin.
+
+### Ce qui n'a délibérément pas été fait
+
+Aucune candidature n'a été envoyée. Compléter ce POST délivre un vrai message à
+une vraie agence, au nom d'une personne — le faire pour tester reviendrait à
+envoyer du spam à un professionnel sous une fausse identité. Le contrat de
+l'API est établi ; le premier envoi réel appartient à la Phase 6, avec le
+consentement d'un client, son dossier, et une annonce qu'il veut réellement.
