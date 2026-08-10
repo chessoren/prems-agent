@@ -18,7 +18,12 @@
     "db:seed": "NODE_USE_ENV_PROXY=1 node tools/supabase/seed-listings.mjs",
     "shots:onboarding": "NODE_USE_ENV_PROXY=1 node tools/onboarding-shots.mjs",
     "ctas:retarget": "node tools/retarget-ctas.mjs",
-    "og:image": "NODE_USE_ENV_PROXY=1 node tools/make-og-image.mjs"
+    "og:image": "NODE_USE_ENV_PROXY=1 node tools/make-og-image.mjs",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "ci": "npm run typecheck && npm run test && npm run build",
+    "db:migrate": "NODE_USE_ENV_PROXY=1 node tools/supabase/migrate.mjs",
+    "db:inspect": "NODE_USE_ENV_PROXY=1 node tools/supabase/inspect.mjs"
   },
   "repository": {
     "type": "git",
@@ -37,12 +42,18 @@
     "playwright": "^1.62.1",
     "pngjs": "^7.0.0",
     "postcss": "^8.5.26",
-    "prettier": "^3.9.6"
+    "prettier": "^3.9.6",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4",
+    "@types/node": "^24.10.1"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.2",
     "astro": "^5.18.2"
   },
   "type": "module",
-  "private": true
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ]
 }

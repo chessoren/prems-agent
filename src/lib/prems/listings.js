@@ -43,8 +43,10 @@ async function fetchCity(citySlug) {
   const supabase = client();
 
   if (supabase) {
+    // `demo_listings`, not `listings`: the latter is the scraped catalogue,
+    // which is not world-readable and is not what this screen previews.
     const query = supabase
-      .from('listings')
+      .from('demo_listings')
       .select('*')
       .eq('city_slug', citySlug)
       .limit(400)

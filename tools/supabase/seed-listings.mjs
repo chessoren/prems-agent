@@ -151,15 +151,23 @@ async function upload(listings, env) {
     'content-type': 'application/json',
   };
 
+  // `demo_listings` throughout. This function deletes its whole target table
+  // before writing, and since 0002 the name `listings` belongs to the scraped
+  // catalogue - pointing this at it would wipe production every time someone
+  // regenerated the demo data.
+  //
   // Replace wholesale: the generator is deterministic, so re-seeding should
   // converge on exactly one copy of the catalogue rather than stack duplicates.
-  const wipe = await fetch(`${url}/rest/v1/listings?id=not.is.null`, { method: 'DELETE', headers });
+  const wipe = await fetch(`${url}/rest/v1/demo_listings?id=not.is.null`, {
+    method: 'DELETE',
+    headers,
+  });
   if (!wipe.ok) throw new Error(`purge -> HTTP ${wipe.status}\n${await wipe.text()}`);
 
   const BATCH = 200;
   for (let i = 0; i < listings.length; i += BATCH) {
     const batch = listings.slice(i, i + BATCH);
-    const res = await fetch(`${url}/rest/v1/listings`, {
+    const res = await fetch(`${url}/rest/v1/demo_listings`, {
       method: 'POST',
       headers: { ...headers, prefer: 'return=minimal' },
       body: JSON.stringify(batch),
