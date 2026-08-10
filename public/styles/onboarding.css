@@ -1596,3 +1596,206 @@ body.ob-body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ==========================================================================
+ * Desktop.
+ *
+ * Everything above is written mobile-first and stays untouched below 810px.
+ * This layer exists because a flow designed for a thumb does not become a
+ * desktop flow by being centred: at 1440px the 560px shell read as a phone
+ * screenshot stranded in the middle of an empty page.
+ *
+ * Three ideas drive the whole layer:
+ *
+ * 1. A question and a result set want different widths. Prose has a readable
+ *    measure - widening it past ~640px makes it worse, not better - while the
+ *    listings grid is starved at that width. The shell is therefore a variable
+ *    that individual screens override through `[data-screen]`, rather than one
+ *    number applied everywhere.
+ * 2. Vertical space is the desktop's real currency. A phone is cramped, so the
+ *    mobile layout packs; a desktop has room, so the layer buys air around the
+ *    question instead of scaling everything up.
+ * 3. A pointer is not a thumb. Full-width pills are a touch-target decision,
+ *    and reproducing them at 640px wide is the single thing that most makes a
+ *    page look like a stretched phone. Controls get their natural width back.
+ * ========================================================================== */
+
+@media (min-width: 810px) {
+  .ob {
+    --ob-shell-max: 600px;
+    --ob-gutter: 40px;
+  }
+
+  /* The question sits on the optical centre - slightly above the true middle,
+   * which is where the eye expects it. The mobile rule pinned it to the top,
+   * which on a short laptop viewport left the footer floating in isolation. */
+  .ob__stage {
+    justify-content: center;
+    padding: 40px 0 32px;
+    min-height: calc(100svh - 168px);
+  }
+
+  .ob__title {
+    font-size: clamp(32px, 3.1vw, 40px);
+  }
+
+  /* A measure, not a width: past ~46 characters the eye loses the start of the
+   * next line. The shell is wider than that on purpose, so the subtitle is
+   * capped independently. */
+  .ob__subtitle {
+    font-size: 17px;
+    max-width: 46ch;
+  }
+
+  /* On the screens that centre their text, capping the subtitle would otherwise
+   * leave a narrow block pinned to the left under a centred title. */
+  .ob[data-screen="aha"] .ob__subtitle,
+  .ob[data-screen="done"] .ob__subtitle {
+    margin-inline: auto;
+  }
+
+  .ob__body {
+    margin-top: 30px;
+  }
+
+  /* Header and footer follow the same shell as the stage, so the progress bar
+   * sits exactly above the question rather than spanning an unrelated width. */
+  .ob__header {
+    padding-top: 20px;
+    padding-bottom: 16px;
+  }
+
+  .ob__footer {
+    padding-bottom: 26px;
+  }
+
+  /* A pill is 100% wide on a phone because a thumb needs the target. With a
+   * pointer, that same pill at shell width is the tell of a stretched mobile
+   * layout. Give the primary action its natural size back. */
+  .ob__footer-inner > *:first-child,
+  .ob__footer-inner .ob-btn,
+  .ob-done .ob-btn {
+    max-width: 400px;
+    margin-inline: auto;
+  }
+
+  .ob-btn {
+    font-size: 16.5px;
+  }
+
+  /* Hover is only meaningful once a pointer exists; on touch it fires on tap
+   * and leaves the card stuck in its hover state. */
+  @media (hover: hover) and (pointer: fine) {
+    .ob-option:hover,
+    .ob-listing:hover {
+      transform: translateY(-2px);
+    }
+
+    .ob-listing {
+      transition:
+        transform 240ms var(--ob-ease-out),
+        box-shadow 240ms var(--ob-ease-out);
+    }
+
+    .ob-listing:hover {
+      box-shadow: var(--ob-shadow-card-hover);
+    }
+  }
+
+  /* Two fields that belong to one answer read as one row when there is width
+   * for it - first and last name, a city and its postcode. */
+  .ob-field__row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+
+  .ob-options--pair {
+    gap: 14px;
+  }
+
+  /* The results screen is the emotional peak of the flow and the one screen
+   * that genuinely wants the width. Six cards at 560px are thumbnails; at
+   * 900px they are apartments. */
+  .ob[data-screen="aha"] {
+    --ob-shell-max: 900px;
+  }
+
+  .ob[data-screen="aha"] .ob-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px;
+    margin-top: 34px;
+  }
+
+  /* 4:3 is right for a card the width of a phone. Three times wider, it turns
+   * each card into a column tall enough to push the second row - and the call
+   * to action with it - off the screen. A shorter crop keeps two rows and the
+   * button visible together, which is the whole point of this screen. */
+  .ob[data-screen="aha"] .ob-listing__photo {
+    aspect-ratio: 16 / 10;
+  }
+
+  .ob-aha__count {
+    font-size: clamp(76px, 7vw, 104px);
+  }
+
+  /* The hook is a landing moment, not a question: it gets the full canvas. */
+  .ob-hook__content {
+    max-width: 620px;
+  }
+
+  .ob-hook__title {
+    font-size: clamp(50px, 4.6vw, 66px);
+  }
+
+  .ob-hook__sub {
+    max-width: 460px;
+    font-size: 17.5px;
+  }
+
+  .ob-hook__tiles {
+    gap: 18px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .ob {
+    --ob-shell-max: 640px;
+  }
+
+  .ob__stage {
+    padding: 56px 0 40px;
+  }
+
+  .ob__title {
+    font-size: clamp(38px, 3.2vw, 46px);
+  }
+
+  .ob__subtitle {
+    font-size: 17.5px;
+  }
+
+  /* Wider still: at this size three cards can hold a real photo and a full
+   * price line without the text wrapping mid-word. */
+  .ob[data-screen="aha"] {
+    --ob-shell-max: 940px;
+  }
+
+  .ob[data-screen="aha"] .ob-grid {
+    gap: 24px;
+  }
+
+  .ob-hook__title {
+    font-size: clamp(62px, 4.4vw, 76px);
+  }
+
+  .ob-hook__content {
+    max-width: 720px;
+  }
+}
+
+/* The footer stays sticky at every size on purpose. Releasing it on tall
+ * windows looked calmer on the short screens and hid the call to action below
+ * the fold on the long ones - and "which screens are short" is a function of
+ * content the stylesheet cannot see. A reachable button beats a tidier one. */

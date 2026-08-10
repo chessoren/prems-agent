@@ -12,7 +12,14 @@
 import { client, ensureSession } from './supabase.js';
 import { upload } from './documents.js';
 
-const API = import.meta.env.PUBLIC_PREMS_API_URL || '';
+// The deployed service is the default rather than an empty string. This value
+// is not a secret - it is inlined into the browser bundle either way, and the
+// service authorises every call against the caller's Supabase JWT. Making it a
+// default means the shortcuts work on a fresh deployment instead of silently
+// disappearing because one dashboard field was never filled in. An environment
+// variable still wins, so a preview can point at a staging service.
+const API =
+  import.meta.env.PUBLIC_PREMS_API_URL || 'https://prems-api-bhrpp55xqa-od.a.run.app';
 
 export const isAvailable = () => Boolean(API && client());
 
