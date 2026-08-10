@@ -1,7 +1,10 @@
 # Build, push and deploy prems-api.
 #
-#   gcloud builds submit --config cloudbuild.yaml \
-#     --substitutions=_ALLOWED_ORIGINS="https://prems.getmira.run\,http://localhost:4321"
+#   gcloud builds submit --config cloudbuild.yaml
+#
+# The origin list is semicolon-separated on purpose: gcloud parses
+# --substitutions as a dict and splits it on commas, so a comma-separated value
+# would need shell-dependent escaping to survive being passed in.
 #
 # The two secrets are mounted from Secret Manager at deploy time, so no
 # credential is ever baked into the image or written into this file.
@@ -17,7 +20,7 @@ substitutions:
   _DOCAI_LOCATION: eu
   _DOCAI_IDENTITY_PROCESSOR_ID: 30486f64a209a15e
   _DOCAI_PAYSLIP_PROCESSOR_ID: 3f381d89249d38bb
-  _ALLOWED_ORIGINS: http://localhost:4321
+  _ALLOWED_ORIGINS: https://prems.getmira.run;http://localhost:4321
 
 images:
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${SHORT_SHA}

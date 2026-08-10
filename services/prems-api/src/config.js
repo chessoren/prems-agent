@@ -35,9 +35,16 @@ export const config = {
     payslipProcessorId: optional('DOCAI_PAYSLIP_PROCESSOR_ID'),
   },
 
-  /** Exact origins allowed to call this service. No wildcards. */
+  /**
+   * Exact origins allowed to call this service. No wildcards.
+   *
+   * Separated by semicolons, commas or whitespace - all three are accepted
+   * because `gcloud` parses --substitutions as a dict and splits it on commas,
+   * so a comma-separated value needs shell-dependent escaping to survive. A
+   * semicolon needs none.
+   */
   allowedOrigins: optional('ALLOWED_ORIGINS', 'http://localhost:4321')
-    .split(',')
+    .split(/[;,\s]+/)
     .map((origin) => origin.trim())
     .filter(Boolean),
 

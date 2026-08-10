@@ -50,16 +50,26 @@ indique laquelle a produit le chiffre.
 
 ## Déploiement
 
+Depuis Cloud Shell, qui démarre sur un répertoire vide :
+
 ```bash
 gcloud config set project gen-lang-client-0781599139
 
-gcloud builds submit --config cloudbuild.yaml \
-  --substitutions=_ALLOWED_ORIGINS="https://prems.getmira.run\,http://localhost:4321"
+git clone -b claude/prems-onboarding-flow-2d2er5 \
+  https://github.com/chessoren/prems-landing-page.git
+cd prems-landing-page/services/prems-api
+
+gcloud builds submit --config cloudbuild.yaml
 ```
 
-`_ALLOWED_ORIGINS` est une liste blanche exacte, sans joker : refléter une
-origine arbitraire laisserait n'importe quelle page du web appeler ce service
-avec un jeton volé.
+Aucune substitution à passer : les valeurs du projet provisionné sont déjà les
+valeurs par défaut du `cloudbuild.yaml`, y compris la liste blanche d'origines.
+
+Celle-ci est exacte, sans joker : refléter une origine arbitraire laisserait
+n'importe quelle page du web appeler ce service avec un jeton volé. Elle est
+séparée par des points-virgules parce que `gcloud` découpe `--substitutions`
+sur les virgules — un séparateur virgule demanderait un échappement qui dépend
+du shell.
 
 Récupérer ensuite l'URL publique et la renseigner côté front :
 
