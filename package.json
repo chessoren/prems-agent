@@ -54,6 +54,7 @@
   "type": "module",
   "private": true,
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "workers"
   ]
 }

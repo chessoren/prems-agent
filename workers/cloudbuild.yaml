@@ -1,0 +1,53 @@
+# Build the scraper image, push it, and (re)create the Cloud Run Job.
+#
+# One image serves every source: which one a run scrapes is decided by the
+# SOURCE_SLUG environment variable on the job, so adding a source never means
+# building or deploying anything new.
+substitutions:
+  _REGION: europe-west9
+  _REPO: prems
+  _IMAGE: prems-scraper
+  _JOB: prems-scrape-bienici
+  _SOURCE_SLUG: bienici
+  _SUPABASE_URL: https://budbfhrqdeghyufeizpv.supabase.co
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - workers/Dockerfile
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:$BUILD_ID
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:latest
+      - .
+
+  - name: gcr.io/cloud-builders/docker
+    args: [push, --all-tags, '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}']
+
+  # `jobs deploy` creates or updates, so this file is the whole deployment.
+  # The service role key comes from Secret Manager and never appears here.
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - deploy
+      - ${_JOB}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:$BUILD_ID
+      - --region=${_REGION}
+      - --service-account=prems-workers@$PROJECT_ID.iam.gserviceaccount.com
+      - --set-env-vars=SOURCE_SLUG=${_SOURCE_SLUG},SUPABASE_URL=${_SUPABASE_URL}
+      - --set-secrets=SUPABASE_SERVICE_ROLE_KEY=supabase-service-role-key:latest
+      # A run that overruns its schedule is worse than a run that gives up:
+      # two overlapping scrapes double the load on the site for nothing.
+      - --task-timeout=300s
+      - --max-retries=1
+      - --memory=512Mi
+      - --cpu=1
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}

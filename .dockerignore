@@ -1,0 +1,16 @@
+# The worker image needs the workspace manifests, packages/core and workers.
+# Everything else - 60 MB of mirrored Framer assets in particular - would only
+# make the build slower and the image bigger.
+node_modules
+**/node_modules
+dist
+.astro
+.cache
+public
+src
+tools
+docs
+services
+.git
+.env
+*.tsbuildinfo

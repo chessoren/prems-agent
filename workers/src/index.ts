@@ -1,0 +1,137 @@
+/**
+ * The scrape entrypoint.
+ *
+ * One process, one source, one run. Cloud Scheduler decides when; this decides
+ * what. Which source is chosen by `SOURCE_SLUG`, so the same image serves every
+ * adapter and adding a source is a row in `sources` plus a scheduler job, not a
+ * new deployment.
+ *
+ * The run is recorded before it starts and closed however it ends. A scraper
+ * that fails silently is the most expensive failure in this system - the site
+ * keeps working, the client keeps paying, and nothing arrives - so the failure
+ * path is written with the same care as the success path.
+ */
+
+import { ADAPTERS } from './adapters/registry.js';
+import { db, logEvent } from './db.js';
+import { ingest } from './ingest.js';
+
+/** A run must not outlive its schedule, or two of them overlap. */
+const RUN_TIMEOUT_MS = 4 * 60 * 1000;
+
+async function main(): Promise<void> {
+  const slug = process.env.SOURCE_SLUG;
+  if (!slug) throw new Error('SOURCE_SLUG manquant');
+
+  const adapter = ADAPTERS[slug];
+  if (!adapter) throw new Error(`Aucun adaptateur pour la source « ${slug} »`);
+
+  const client = db();
+
+  const { data: source, error: sourceError } = await client
+    .from('sources')
+    .select('id, slug, enabled')
+    .eq('slug', slug)
+    .single();
+
+  if (sourceError || !source) throw new Error(`Source « ${slug} » absente de la base`);
+  if (!source.enabled) {
+    console.log(`source ${slug} désactivée, rien à faire`);
+    return;
+  }
+
+  // Zones follow demand: the union of what active clients asked for, or
+  // Île-de-France when there are none. Computed in the database so every
+  // worker and every future scheduler agrees on one answer.
+  const { data: zoneData } = await client.rpc('active_scrape_zones');
+  const zones: string[] = Array.isArray(zoneData) ? zoneData : [];
+
+  // The watermark: the most recent publication we already hold. The adapter
+  // reads down its own newest-first list until it reaches this and stops.
+  const { data: newest } = await client
+    .from('listings')
+    .select('published_at')
+    .eq('source_id', source.id)
+    .not('published_at', 'is', null)
+    .order('published_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const since = newest?.published_at ? new Date(newest.published_at as string) : null;
+
+  const { data: run } = await client
+    .from('scrape_runs')
+    .insert({ source_id: source.id, status: 'running', zones })
+    .select('id')
+    .single();
+
+  const runId = run?.id as number | undefined;
+  const started = Date.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), RUN_TIMEOUT_MS);
+
+  try {
+    const { listings, requests } = await adapter.fetchRecent({
+      zones,
+      since,
+      // A first run has no watermark, so the ceiling is what stops it reading
+      // the whole site. Subsequent runs stop long before reaching it.
+      maxListings: since ? 500 : 1000,
+      signal: controller.signal,
+    });
+
+    const result = await ingest(source.id as string, slug, listings, controller.signal);
+
+    await client
+      .from('scrape_runs')
+      .update({
+        status: 'ok',
+        finished_at: new Date().toISOString(),
+        items_seen: listings.length,
+        items_new: result.inserted,
+        items_updated: result.updated,
+        duration_ms: Date.now() - started,
+      })
+      .eq('id', runId!);
+
+    console.log(
+      `${slug}: ${listings.length} vues, ${result.inserted} nouvelles, ` +
+        `${result.updated} mises à jour, ${result.skipped} inchangées, ` +
+        `${requests} requête(s), ${Date.now() - started} ms`,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+
+    if (runId) {
+      await client
+        .from('scrape_runs')
+        .update({
+          status: 'failed',
+          finished_at: new Date().toISOString(),
+          duration_ms: Date.now() - started,
+          error: message.slice(0, 2000),
+        })
+        .eq('id', runId);
+    }
+
+    // Announced as an event too: the run log is for the operator, the event
+    // log is what alerting and the interface read.
+    await logEvent({
+      type: 'source.scrape_failed',
+      subjectType: 'source',
+      subjectId: source.id as string,
+      payload: { source: slug, error: message.slice(0, 500) },
+    });
+
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : error);
+  // A non-zero exit is what makes Cloud Run Jobs mark the execution failed,
+  // which is what any alerting will key on.
+  process.exit(1);
+});
