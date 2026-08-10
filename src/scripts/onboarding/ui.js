@@ -245,6 +245,42 @@ export function shortcuts(label, actions) {
   );
 }
 
+/**
+ * Run a shortcut, narrating what it is doing on the button itself.
+ *
+ * "Ouverture… / Envoi… / Lecture…" tells the person which of three steps they
+ * are waiting on. A bare spinner on a task that can take fifteen seconds reads
+ * as a hang, and a hung shortcut is worse than no shortcut.
+ */
+export async function withShortcutStatus(button, run) {
+  const original = button.innerHTML;
+  const setLabel = (text) => {
+    button.replaceChildren(h('span', { class: 'ob-spinner ob-spinner--dark' }), text);
+  };
+
+  button.disabled = true;
+  try {
+    return await run(setLabel);
+  } finally {
+    button.disabled = false;
+    button.innerHTML = original;
+  }
+}
+
+/** Feedback line under a shortcut: what was read, or why it failed. */
+export function scanNote() {
+  const node = h('p', { class: 'ob-scan-note', hidden: true });
+  node.show = (message, tone = 'ok') => {
+    node.hidden = false;
+    node.className = `ob-scan-note ob-scan-note--${tone}`;
+    node.textContent = message;
+  };
+  node.clear = () => {
+    node.hidden = true;
+  };
+  return node;
+}
+
 export const note = (text, iconName = 'shield') =>
   h(
     'p',

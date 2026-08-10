@@ -73,7 +73,7 @@ export async function upload(file, kind, subtype) {
     size_bytes: file.size,
   });
 
-  return { ok: true, stored: true, name: file.name, size: file.size, path };
+  return { ok: true, stored: true, name: file.name, size: file.size, bucket, path };
 }
 
 export const humanSize = (bytes) =>

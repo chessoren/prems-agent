@@ -9,3 +9,6 @@ dist/
 # Secrets. Never commit: the service role key bypasses every RLS policy.
 .env
 .env.local
+
+# Service dependencies, installed per-deploy by Cloud Build.
+services/*/node_modules/

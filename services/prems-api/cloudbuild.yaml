@@ -1,0 +1,69 @@
+# Build, push and deploy prems-api.
+#
+#   gcloud builds submit --config cloudbuild.yaml \
+#     --substitutions=_ALLOWED_ORIGINS="https://prems.getmira.run\,http://localhost:4321"
+#
+# The two secrets are mounted from Secret Manager at deploy time, so no
+# credential is ever baked into the image or written into this file.
+
+substitutions:
+  _REGION: europe-west9
+  _REPO: prems
+  _SERVICE: prems-api
+  _SERVICE_ACCOUNT: prems-api@gen-lang-client-0781599139.iam.gserviceaccount.com
+  _SUPABASE_URL: https://budbfhrqdeghyufeizpv.supabase.co
+  # Document AI has no europe-west9 processor location; `eu` keeps the data in
+  # the European multi-region, which is the requirement that applies.
+  _DOCAI_LOCATION: eu
+  _DOCAI_IDENTITY_PROCESSOR_ID: 30486f64a209a15e
+  _DOCAI_PAYSLIP_PROCESSOR_ID: 3f381d89249d38bb
+  _ALLOWED_ORIGINS: http://localhost:4321
+
+images:
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${SHORT_SHA}
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${SHORT_SHA}
+      - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:latest
+      - .
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - --all-tags
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}
+
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${SHORT_SHA}
+      - --region=${_REGION}
+      - --service-account=${_SERVICE_ACCOUNT}
+      # Public entry point: the browser calls it directly. Authorisation is the
+      # Supabase JWT check inside the service, not IAM.
+      - --allow-unauthenticated
+      # OCR is bursty and idle most of the time. Scaling to zero keeps the bill
+      # near nothing; one always-warm instance would cost more than it saves.
+      - --min-instances=0
+      - --max-instances=10
+      - --concurrency=20
+      - --cpu=1
+      - --memory=512Mi
+      # Document AI on a multi-page PDF can take a while; the default 5 minutes
+      # is generous, and anything longer is a failure worth surfacing.
+      - --timeout=120s
+      - --set-secrets=SUPABASE_SERVICE_ROLE_KEY=supabase-service-role:latest,SUPABASE_JWT_ISSUER=supabase-jwt-issuer:latest
+      # `^##^` switches the delimiter, because the origin list contains commas.
+      - --set-env-vars=^##^GCP_PROJECT_ID=${PROJECT_ID}##SUPABASE_URL=${_SUPABASE_URL}##DOCAI_LOCATION=${_DOCAI_LOCATION}##DOCAI_IDENTITY_PROCESSOR_ID=${_DOCAI_IDENTITY_PROCESSOR_ID}##DOCAI_PAYSLIP_PROCESSOR_ID=${_DOCAI_PAYSLIP_PROCESSOR_ID}##ALLOWED_ORIGINS=${_ALLOWED_ORIGINS}
+
+options:
+  logging: CLOUD_LOGGING_ONLY

@@ -106,13 +106,6 @@ function render(id) {
       primary.disabled = !valid;
       primary.setAttribute('aria-disabled', String(!valid));
     },
-    /**
-     * OCR entry point. The shortcut buttons are disabled until Cloud Run is
-     * configured, so this only runs once PUBLIC_PREMS_API_URL is set.
-     */
-    scan(kind) {
-      console.info(`[prems] scan ${kind} — endpoint OCR à brancher sur Cloud Run`);
-    },
   };
 
   current = screen.build(ctx);

@@ -1184,6 +1184,26 @@ body.ob-body {
   cursor: not-allowed;
 }
 
+/* What the scan read, or why it could not. Sits under the shortcut it belongs
+ * to, never over the fields, so the person's own input is never obscured. */
+.ob-scan-note {
+  margin-top: 12px;
+  font-size: 13.5px;
+  line-height: 148%;
+}
+
+.ob-scan-note[hidden] {
+  display: none;
+}
+
+.ob-scan-note--ok {
+  color: #1f8d4a;
+}
+
+.ob-scan-note--error {
+  color: #c23f22;
+}
+
 /* --------------------------------------------------------------------------
  * File upload (screen 10)
  * -------------------------------------------------------------------------- */
@@ -1526,6 +1546,12 @@ body.ob-body {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* On a light shortcut button rather than a dark primary one. */
+.ob-spinner--dark {
+  border-color: rgba(26, 26, 26, 0.18);
+  border-top-color: var(--color-ink);
 }
 
 .ob-sr {

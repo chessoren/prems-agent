@@ -16,6 +16,7 @@ import * as geo from '../../lib/prems/geo.js';
 import * as inventory from '../../lib/prems/listings.js';
 import { upload, humanSize, validate } from '../../lib/prems/documents.js';
 import { client, ensureSession, isConfigured } from '../../lib/prems/supabase.js';
+import { scan as runScan, isAvailable as ocrAvailable } from '../../lib/prems/ocr.js';
 import {
   h,
   icon,
@@ -30,12 +31,59 @@ import {
   note,
   euros,
   photoHue,
+  withShortcutStatus,
+  scanNote,
 } from './ui.js';
 
-/** Set when Cloud Run is wired up; until then the OCR shortcuts explain why. */
-const OCR_API = import.meta.env.PUBLIC_PREMS_API_URL || '';
+/** True once Cloud Run is wired up; until then the shortcuts explain why not. */
+const OCR_READY = ocrAvailable();
 const OCR_PENDING_TITLE =
   "Le scan automatique arrive très bientôt — en attendant, la saisie manuelle juste au-dessus fait exactement le même travail.";
+
+const SCAN_STATUS = {
+  picking: 'Ouverture…',
+  uploading: 'Envoi…',
+  reading: 'Lecture…',
+};
+
+/**
+ * Wire one camera shortcut.
+ *
+ * `apply` receives the fields and writes them into the inputs. It returns the
+ * confirmation line, because only the screen knows which fields it managed to
+ * fill - and saying "nom et date de naissance remplis" is what tells the person
+ * exactly what to go and check.
+ */
+function scanShortcut({ kind, label, feedback, apply }) {
+  return {
+    icon: 'camera',
+    label,
+    disabled: !OCR_READY,
+    title: OCR_READY ? '' : OCR_PENDING_TITLE,
+    onClick: async (event) => {
+      const button = event.currentTarget;
+      feedback.clear();
+
+      await withShortcutStatus(button, async (setLabel) => {
+        const result = await runScan(kind, { onStatus: (step) => setLabel(SCAN_STATUS[step]) });
+
+        if (result.cancelled) return;
+        if (!result.ok) {
+          feedback.show(result.error, 'error');
+          return;
+        }
+
+        const filled = apply(result.fields);
+        feedback.show(
+          filled.length
+            ? `${filled.join(', ')} — vérifie et corrige si besoin avant de valider.`
+            : 'Document illisible. Saisis les champs à la main.',
+          filled.length ? 'ok' : 'error',
+        );
+      });
+    },
+  };
+}
 
 /* =========================================================================
  * Screen 0 - the hook
@@ -805,6 +853,21 @@ const income = {
 
     if (existing) assess();
 
+    const feedback = scanNote();
+
+    const payslipShortcut = scanShortcut({
+      kind: 'revenus',
+      label: 'Photographier mon bulletin de salaire',
+      feedback,
+      apply(fields) {
+        if (!fields.netMonthlyEuros) return [];
+        amount.value = fields.netMonthlyEuros.toLocaleString('fr-FR');
+        ctx.setValid(true);
+        assess();
+        return ['Revenu net rempli'];
+      },
+    });
+
     return {
       body: h(
         'div',
@@ -821,13 +884,7 @@ const income = {
         }),
         verdict,
         shortcuts('Aller plus vite', [
-          {
-            icon: 'camera',
-            label: 'Photographier mon bulletin de salaire',
-            disabled: !OCR_API,
-            title: OCR_API ? '' : OCR_PENDING_TITLE,
-            onClick: () => ctx.scan('revenus'),
-          },
+          payslipShortcut,
           {
             icon: 'bank',
             label: 'Connecter ma banque',
@@ -836,6 +893,7 @@ const income = {
               'La connexion bancaire arrive une fois l’agrément DSP2 obtenu. La saisie manuelle reste la voie normale.',
           },
         ]),
+        feedback,
       ),
       valid: Boolean(existing),
       focus: amount,
@@ -901,6 +959,8 @@ const guarantor = {
       ctx.setValid(isVisale || name.value.trim().length > 1);
     });
 
+    const guarantorFeedback = scanNote();
+
     const personal = h(
       'div',
       { hidden: draft.guarantorRelation === 'visale' },
@@ -916,14 +976,18 @@ const guarantor = {
         ),
       }),
       shortcuts('Aller plus vite', [
-        {
-          icon: 'camera',
+        scanShortcut({
+          kind: 'garant',
           label: 'Photographier son bulletin de salaire',
-          disabled: !OCR_API,
-          title: OCR_API ? '' : OCR_PENDING_TITLE,
-          onClick: () => ctx.scan('garant'),
-        },
+          feedback: guarantorFeedback,
+          apply(fields) {
+            if (!fields.netMonthlyEuros) return [];
+            guarantorIncome.value = fields.netMonthlyEuros.toLocaleString('fr-FR');
+            return ['Revenu du garant rempli'];
+          },
+        }),
       ]),
+      guarantorFeedback,
     );
 
     name.addEventListener('input', () => ctx.setValid(name.value.trim().length > 1));
@@ -996,6 +1060,42 @@ const identity = {
     });
     for (const el of [first, last, birth, number]) el.addEventListener('input', check);
 
+    const feedback = scanNote();
+
+    /** Write what the scan read into the inputs, and say what was filled. */
+    const applyScan = (fields) => {
+      const filled = [];
+
+      if (fields.firstName) {
+        first.value = fields.firstName;
+        filled.push('Prénom');
+      }
+      if (fields.lastName) {
+        last.value = fields.lastName;
+        filled.push('Nom');
+      }
+      if (fields.birthDate) {
+        birth.value = fields.birthDate;
+        filled.push('Date de naissance');
+      }
+      if (fields.documentNumber) {
+        number.value = fields.documentNumber;
+        filled.push('Numéro');
+      }
+      if (fields.documentType) {
+        store.set({ idType: fields.documentType });
+        for (const card of types.querySelectorAll('.ob-option')) {
+          const selected = card.dataset.value === fields.documentType;
+          card.dataset.selected = String(selected);
+          card.setAttribute('aria-pressed', String(selected));
+        }
+        filled.push('Type de pièce');
+      }
+
+      check();
+      return filled;
+    };
+
     return {
       body: h(
         'div',
@@ -1012,14 +1112,14 @@ const identity = {
         h('div', { style: { height: '16px' } }),
         field({ label: 'Numéro du document', input: number }),
         shortcuts('Aller plus vite', [
-          {
-            icon: 'camera',
+          scanShortcut({
+            kind: 'identite',
             label: 'Scanner ma pièce avec l’appareil photo',
-            disabled: !OCR_API,
-            title: OCR_API ? '' : OCR_PENDING_TITLE,
-            onClick: () => ctx.scan('identite'),
-          },
+            feedback,
+            apply: applyScan,
+          }),
         ]),
+        feedback,
         note(
           'Le scan pré-remplit les champs : tu gardes la main pour vérifier et corriger avant de valider.',
           'shield',

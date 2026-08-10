@@ -1,137 +1,91 @@
-# Google Cloud Run — checklist de mise en place
+# Google Cloud Run — état et déploiement
 
 Ce service existe pour une seule raison : **héberger ce qui porte un secret**.
-Les clés Document AI, les identifiants d'agrégation bancaire et la clé
-`service_role` de Supabase ne doivent jamais atteindre un navigateur. Tout le
-reste du parcours fonctionne déjà sans lui.
+Les clés Document AI et la clé `service_role` Supabase ne doivent jamais
+atteindre un navigateur. Tout le reste du parcours fonctionne sans lui — les
+raccourcis photo se désactivent, la saisie manuelle ne bouge pas.
 
-Tant que `PUBLIC_PREMS_API_URL` est vide, les raccourcis « scanner ma pièce » et
-« photographier mon bulletin » restent visibles mais désactivés, avec une
-explication au survol. La saisie manuelle — la voie normale — n'en dépend pas.
+## Infrastructure — fait
 
----
-
-## Étape 1 — Le projet et la facturation
-
-1. Console Google Cloud → **Créer un projet**, nom `prems-prod`.
-2. Noter le **Project ID** (il diffère du nom, ex. `prems-prod-418302`).
-3. **Facturation → Associer un compte de facturation.** Sans ça, Cloud Run et
-   Document AI refusent de démarrer.
-4. Choisir la région **`europe-west9` (Paris)** ou `europe-west1` (Belgique).
-   C'est une contrainte RGPD, pas une préférence de latence : le service
-   manipulera des pièces d'identité de résidents français.
-
-➜ **À me transmettre :** `GCP_PROJECT_ID`, la région retenue.
-
-## Étape 2 — Activer les API
-
-Dans **API et services → Bibliothèque**, activer :
-
-| API | Pourquoi |
+| Élément | Valeur |
 |---|---|
-| Cloud Run Admin API | héberger le service |
-| Artifact Registry API | stocker l'image du conteneur |
-| Cloud Build API | construire l'image |
-| Document AI API | OCR des pièces et bulletins |
-| Secret Manager API | stocker les clés hors du code |
+| Projet | `gen-lang-client-0781599139` (*prems-prod*) |
+| Région Cloud Run / Artifact Registry | `europe-west9` (Paris) |
+| Facturation | associée |
+| API activées | Cloud Run Admin, Artifact Registry, Cloud Build, Document AI, Secret Manager |
+| Dépôt Docker | `prems` |
+| Processeur *Identity Document* | `30486f64a209a15e` (localisation `eu`) |
+| Processeur *Expense* | `3f381d89249d38bb` (localisation `eu`) |
+| Compte de service | `prems-api@gen-lang-client-0781599139.iam.gserviceaccount.com` |
+| Rôles | `Document AI API User`, `Secret Manager Secret Accessor` |
+| Clé JSON | aucune — Cloud Run donne l'identité au conteneur |
+| Secrets | `supabase-service-role`, `supabase-jwt-issuer` |
 
-➜ **À me confirmer :** les cinq API sont activées.
+> **Localisation Document AI.** `europe-west9` n'est pas proposé comme
+> localisation de processeur. Les processeurs sont en `eu`, la multi-région
+> européenne : les données restent dans l'UE, ce qui est la contrainte
+> réellement applicable. Cloud Run et Artifact Registry sont bien à Paris.
 
-## Étape 3 — Artifact Registry
+## Le service — fait
 
-1. **Artifact Registry → Créer un dépôt**
-2. Nom `prems`, format **Docker**, région identique à l'étape 1.
+Le code vit dans [`services/prems-api/`](../services/prems-api/) : quatre routes
+sur le serveur HTTP de Node, un Dockerfile en deux étapes tournant en
+utilisateur non-root, et un `cloudbuild.yaml` qui construit, pousse et déploie
+en montant les deux secrets depuis Secret Manager.
 
-➜ **À me transmettre :** le nom du dépôt.
+Les valeurs de l'infrastructure ci-dessus sont déjà les substitutions par défaut
+du `cloudbuild.yaml`. Rien à ressaisir.
 
-## Étape 4 — Les processeurs Document AI
+## Déploiement — la commande
 
-1. **Document AI → Explorer les processeurs**
-2. Créer **Identity Document Parser** → noter le **Processor ID**
-3. Créer **Expense Parser** (ou *Form Parser*) pour les bulletins de salaire →
-   noter le **Processor ID**
-4. Vérifier que les deux sont dans la même région qu'à l'étape 1.
+```bash
+gcloud config set project gen-lang-client-0781599139
+cd services/prems-api
 
-➜ **À me transmettre :** `DOCAI_IDENTITY_PROCESSOR_ID`,
-`DOCAI_PAYSLIP_PROCESSOR_ID`.
-
-> Alternative sérieuse : **Mindee**. Une seule clé API, des modèles français
-> prêts à l'emploi (CNI, titre de séjour, fiche de paie), nettement moins de
-> configuration. Si vous préférez cette voie, les étapes 4 et 5 se résument à
-> me donner la clé API.
-
-## Étape 5 — Le compte de service
-
-1. **IAM et admin → Comptes de service → Créer**
-2. Nom `prems-api`
-3. Rôles à accorder :
-   - `Document AI API User`
-   - `Secret Manager Secret Accessor`
-   - `Cloud Run Invoker` *(uniquement si un autre service doit l'appeler)*
-4. **Ne pas générer de clé JSON.** Cloud Run donne l'identité au conteneur
-   automatiquement ; une clé exportée est un secret de plus à faire fuiter.
-
-➜ **À me transmettre :** l'adresse du compte de service
-(`prems-api@<project-id>.iam.gserviceaccount.com`).
-
-## Étape 6 — Les secrets
-
-Dans **Secret Manager**, créer :
-
-| Secret | Contenu |
-|---|---|
-| `supabase-service-role` | la clé `sb_secret_…` |
-| `supabase-jwt-issuer` | `https://budbfhrqdeghyufeizpv.supabase.co/auth/v1` |
-| `mindee-api-key` | si vous partez sur Mindee |
-
-Le service vérifiera chaque requête entrante contre le JWKS Supabase
-(`https://budbfhrqdeghyufeizpv.supabase.co/auth/v1/.well-known/jwks.json`) :
-seul un utilisateur authentifié peut faire scanner un document, et il ne peut
-scanner que le sien.
-
-## Étape 7 — Déploiement et CORS
-
-Au premier déploiement, autoriser en CORS **uniquement** :
-
-```
-http://localhost:4321
-https://<votre-domaine-de-production>
+gcloud builds submit --config cloudbuild.yaml \
+  --substitutions=_ALLOWED_ORIGINS="https://prems.getmira.run\,http://localhost:4321"
 ```
 
-➜ **À me transmettre :** l'**URL publique du service** une fois déployé
-(`https://prems-api-xxxxx-ew.a.run.app`). Elle va dans `PUBLIC_PREMS_API_URL`,
-et les raccourcis s'activent seuls.
+Puis récupérer l'URL publique :
 
-## Étape 8 — Le domaine de production
-
-Le parcours a besoin de connaître son origine finale pour deux choses :
-la liste blanche de redirection Supabase (OAuth Google) et le CORS ci-dessus.
-
-➜ **À me transmettre :** le domaine de production définitif.
-
----
-
-## Récapitulatif
-
-```
-GCP_PROJECT_ID
-région (europe-west9 ou europe-west1)
-nom du dépôt Artifact Registry
-DOCAI_IDENTITY_PROCESSOR_ID  +  DOCAI_PAYSLIP_PROCESSOR_ID   (ou MINDEE_API_KEY)
-adresse du compte de service prems-api
-URL publique Cloud Run  →  PUBLIC_PREMS_API_URL
-domaine de production
+```bash
+gcloud run services describe prems-api --region europe-west9 \
+  --format='value(status.url)'
 ```
 
-## Les endpoints prévus
+## Ce qu'il reste à faire
 
-| Route | Rôle |
-|---|---|
-| `POST /ocr/identity` | lit une CNI / passeport / titre de séjour, renvoie les champs à **pré-remplir** — l'utilisateur garde toujours la main pour corriger |
-| `POST /ocr/payslip` | extrait le net mensuel d'un bulletin |
-| `POST /match` | remplace le catalogue de démo par le vrai moteur 350+ sites |
-| `POST /dossier/verify` | contrôle la conformité au décret Alur avant la célébration |
+1. **Lancer le déploiement** ci-dessus.
+2. **Me transmettre l'URL publique** (`https://prems-api-….a.run.app`) → elle va
+   dans `PUBLIC_PREMS_API_URL`, et les trois raccourcis photo s'activent seuls.
+3. **Confirmer le domaine de production.** `prems.getmira.run` est pris comme
+   hypothèse dans la commande ci-dessus. Il sert à deux choses : la liste blanche
+   CORS du service, et la liste des redirections autorisées côté Supabase Auth
+   (nécessaire pour Google OAuth). Si le domaine final diffère, les deux sont à
+   corriger.
+4. **Google OAuth** : Client ID + Secret à coller dans Supabase Auth, avec
+   `https://budbfhrqdeghyufeizpv.supabase.co/auth/v1/callback` déclaré côté
+   Google. Le bouton est déjà en place dans le parcours.
+5. **Rotation des clés** : `sb_secret` et le token d'accès Supabase ont transité
+   par un canal de conversation. À régénérer depuis le dashboard avant la mise
+   en production, puis à mettre à jour dans Secret Manager.
 
-Aucun de ces endpoints ne stocke de fichier : le document est déjà dans le
-bucket privé de l'utilisateur, le service ne fait que le lire via une URL
-signée à durée courte et renvoyer du texte.
+Le rattachement de `prems.getmira.run` à Cloud Run n'est **pas** nécessaire : ce
+domaine sert au site, le service API garde son URL `run.app` et n'est appelé
+qu'en XHR depuis le navigateur. Un domaine personnalisé sur l'API ne serait utile
+que pour éviter un préconnect supplémentaire — pas prioritaire.
+
+## Vérifications déjà passées
+
+Contre le vrai projet Supabase, avec une session anonyme réelle :
+
+- jeton absent ou invalide → `401`
+- dossier d'un autre utilisateur → `403`
+- traversée de chemin (`<uid>/../autre/x`) → `400`
+- bucket hors liste → `403`
+- propre dossier, fichier absent → `404`
+- préflight CORS : origine autorisée reflétée, origine inconnue refusée
+
+Le seul chemin non exercé de bout en bout est l'appel Document AI lui-même, qui
+demande des identifiants GCP indisponibles depuis l'environnement de
+développement. Il se vérifiera au premier scan réel après déploiement.

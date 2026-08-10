@@ -17,9 +17,11 @@ src/lib/prems/
   listings.js                       moteur de correspondance
   geo.js                            autocomplétion des communes
   documents.js                      envoi de pièces
+  ocr.js                            raccourcis photo (appelle prems-api)
   analytics.js                      entonnoir
 supabase/migrations/0001_*.sql      schéma, RLS, buckets
 tools/supabase/                     provisionnement et catalogue de démo
+services/prems-api/                 le service Cloud Run
 ```
 
 ## Les trois décisions structurantes
@@ -56,9 +58,10 @@ catalogue est servi depuis `public/data/listings.json`.
 | Autocomplétion des communes (`geo.api.gouv.fr`) | ✅ |
 | Entonnoir mesuré écran par écran | ✅ |
 | Envoi du justificatif de domicile | ✅ |
+| Service Cloud Run `prems-api` (OCR + conformité Alur) | ✅ écrit et testé, reste à déployer |
+| Raccourcis photo (pièce, bulletin, bulletin du garant) | ✅ branchés — actifs dès que `PUBLIC_PREMS_API_URL` est renseignée |
 | Google OAuth | bouton présent, s'active dès les identifiants fournis |
 | OTP par SMS | volontairement désactivé |
-| OCR pièce / bulletin | raccourcis visibles et désactivés, en attente de Cloud Run |
 | Connexion bancaire | volontairement désactivée (agrément DSP2) |
 
 ## Commandes
@@ -90,10 +93,21 @@ SUPABASE_ACCESS_TOKEN    # provisionnement uniquement
 SUPABASE_SERVICE_ROLE_KEY
 ```
 
+## Les raccourcis photo
+
+Le fichier part directement dans le bucket privé ; seul son chemin est envoyé à
+`prems-api`, qui le relit avec des identifiants que le navigateur ne voit
+jamais. Ce que l'OCR renvoie est écrit dans les champs **modifiables** et la
+personne vérifie avant de valider — une lecture fausse et sûre d'elle doit
+rester une gêne corrigeable, pas un dossier erroné.
+
+Le bouton dit à quelle étape on en est (« Ouverture… / Envoi… / Lecture… ») :
+un simple spinner sur une tâche de quinze secondes se lit comme un blocage.
+
 ## Ce qui reste à brancher
 
-Voir [`CLOUD-RUN.md`](CLOUD-RUN.md) pour le service qui portera l'OCR, le
-moteur de correspondance réel et la vérification Alur.
+Voir [`CLOUD-RUN.md`](CLOUD-RUN.md) : il ne reste que le déploiement et l'URL
+publique à reporter dans `PUBLIC_PREMS_API_URL`.
 
 Pour activer l'OTP par SMS le jour venu : renseigner Twilio dans Supabase, puis
 appeler `updateUser({ phone })` sur la session anonyme existante. Le compte est
