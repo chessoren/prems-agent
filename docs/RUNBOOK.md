@@ -53,45 +53,40 @@ gcloud projects add-iam-policy-binding $PROJECT \
   --member="serviceAccount:$SA" --role=roles/aiplatform.user
 ```
 
-### 3. `iam.serviceAccountUser` — bloque le déploiement du scraper
+### 3. Le scraper est déployé et tourne — fait
 
-L'image du scraper est construite, poussée sur Artifact Registry et vérifiée en
-exécutant le conteneur contre la vraie base. La création du Cloud Run Job échoue
-sur `iam.serviceaccounts.actAs`, refusé sur **tous** les comptes de service, y
-compris `prems-workers` sur lui-même.
+`iam.serviceAccountUser` a été accordé, et le déploiement est allé au bout :
+
+| Élément | Valeur |
+|---|---|
+| Image | `europe-west9-docker.pkg.dev/gen-lang-client-0781599139/prems/prems-scraper:v1` |
+| Cloud Run Job | `prems-scrape-bienici`, `europe-west9`, SA `prems-workers` |
+| Secret | `supabase-service-role-key`, monté depuis Secret Manager |
+| Cloud Scheduler | `prems-scrape-bienici-tick`, `* * * * *`, Europe/Paris, ENABLED |
+| Première exécution | réussie en 10,4 s |
+
+Vérifié comme il faut l'être : après création du planificateur, de nouveaux
+`scrape_runs` sont apparus **sans que personne ne les déclenche** — #8, #9, #10
+à 01:39, 01:40, 01:41, une par minute. `source_health.is_stale` est repassé à
+`false`.
+
+Pour redéployer après modification du code :
 
 ```bash
-PROJECT=gen-lang-client-0781599139
-SA=prems-workers@$PROJECT.iam.gserviceaccount.com
-
-# Autoriser prems-workers à faire tourner des jobs sous sa propre identité
-gcloud iam service-accounts add-iam-policy-binding $SA \
-  --member="serviceAccount:$SA" --role=roles/iam.serviceAccountUser
-
-# Accès au secret depuis le job
-gcloud secrets add-iam-policy-binding supabase-service-role-key \
-  --member="serviceAccount:$SA" --role=roles/secretmanager.secretAccessor
+docker build -f workers/Dockerfile -t prems-scraper:local .
+TOKEN=$(gcloud auth print-access-token)
+echo "$TOKEN" | docker login -u oauth2accesstoken --password-stdin europe-west9-docker.pkg.dev
+IMG=europe-west9-docker.pkg.dev/gen-lang-client-0781599139/prems/prems-scraper
+docker tag prems-scraper:local $IMG:v2 && docker push $IMG:v2
+gcloud run jobs update prems-scrape-bienici --image=$IMG:v2 --region=europe-west9
 ```
 
-Optionnel, seulement si vous voulez déployer via Cloud Build plutôt qu'en
-poussant l'image à la main (`workers/cloudbuild.yaml` est prêt) :
+`workers/cloudbuild.yaml` fait la même chose côté CI, s'il reçoit un jour
 `roles/cloudbuild.builds.editor` et `roles/storage.admin`.
 
-Une fois ces rôles posés, le job et le planificateur se créent en une commande :
-
-```bash
-gcloud run jobs deploy prems-scrape-bienici \
-  --image=europe-west9-docker.pkg.dev/$PROJECT/prems/prems-scraper:v1 \
-  --region=europe-west9 --service-account=$SA \
-  --set-env-vars=SOURCE_SLUG=bienici,SUPABASE_URL=https://budbfhrqdeghyufeizpv.supabase.co \
-  --set-secrets=SUPABASE_SERVICE_ROLE_KEY=supabase-service-role-key:latest \
-  --task-timeout=300s --max-retries=1 --memory=512Mi --cpu=1
-
-gcloud scheduler jobs create http prems-scrape-bienici-tick \
-  --location=europe-west9 --schedule="* * * * *" \
-  --uri="https://europe-west9-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/$PROJECT/jobs/prems-scrape-bienici:run" \
-  --http-method=POST --oauth-service-account-email=$SA
-```
+Ajouter une source : un adaptateur, une ligne dans `ADAPTERS`, une ligne dans
+`sources`, puis un job et un tick qui ne diffèrent que par `SOURCE_SLUG`. La
+même image sert tout le monde.
 
 ### 4. Le modèle Gemini demandé n'existe pas
 
