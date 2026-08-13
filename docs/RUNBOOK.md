@@ -88,6 +88,29 @@ Ajouter une source : un adaptateur, une ligne dans `ADAPTERS`, une ligne dans
 `sources`, puis un job et un tick qui ne diffèrent que par `SOURCE_SLUG`. La
 même image sert tout le monde.
 
+### Les trois jobs déployés
+
+| Job | Mode | Cadence | Rôle |
+|---|---|---|---|
+| `prems-scrape-bienici` | `SOURCE_SLUG=bienici` | `* * * * *` | collecte |
+| `prems-enrich` | `MODE=enrich` | `*/5 * * * *` | embeddings + liens de doublons |
+| `prems-match` | `MODE=match` | `* * * * *` | matching + événements |
+
+Une seule image (`:v3`) sert les trois ; seules les variables d'environnement
+diffèrent.
+
+**Point de vigilance non résolu** : `prems-match` a une échéance de 600 s et un
+tick à la minute. Si un run dépasse la minute, les runs se chevauchent. Rien ne
+se duplique — la contrainte d'unicité sur `matches` l'interdit — mais du calcul
+est gaspillé. À surveiller via la durée des exécutions, et à corriger en
+espaçant le tick ou en réduisant `MATCH_LIMIT`.
+
+**Latence de matching : toujours non mesurée proprement.** Le chiffre de 1,9 s
+par annonce vient du bac à sable américain contre une base en `eu-west-1`, où un
+simple aller-retour coûte déjà 0,5 à 0,85 s. Le job tourne désormais en
+`europe-west9` : la mesure valide est la durée loggée par `prems-match`, à
+relever une fois quelques exécutions terminées.
+
 ### 4. Le modèle Gemini demandé n'existe pas
 
 « Gemini 3.5 Flash-Lite » n'est pas un identifiant réel. La famille Flash-Lite
