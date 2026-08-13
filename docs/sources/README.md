@@ -54,3 +54,70 @@ Le vivier « API JSON cachée **et** POST simple » est donc plus étroit qu'esp
 Bien'ici est peut-être la meilleure source française sur ces deux critères à la
 fois — et comme elle agrège les CMS, elle porte déjà l'essentiel du marché des
 agences.
+
+---
+
+# Joignabilité : les trois voies testées, et leurs plafonds
+
+La joignabilité — pouvoir écrire à l'agence — est le plafond du produit. Détecter
+une annonce sans pouvoir y candidater ne vaut rien. Trois voies ont été testées
+en conditions réelles. Aucune ne débloque la majorité du catalogue.
+
+## 1. Le formulaire du portail — **fermé**
+
+`POST /api/contactRequests` sur Bien'ici : **401 sans compte connecté**.
+
+Piège de méthode à retenir : une charge vide reçoit un **400** nommant les champs
+manquants, ce qui ressemble à un endpoint ouvert. C'est une erreur de *schéma* —
+la validation de forme s'exécute avant le contrôle d'identité. **Un 400 ne prouve
+jamais l'absence d'authentification.** La vérification correcte est de rendre la
+charge structurellement valide et de regarder ce qui répond ensuite.
+
+## 2. Les formulaires des sites d'agence — **fermés par captcha**
+
+Les CMS identifiés dans le corpus Bien'ici : Immo-Facile (101 annonces),
+Century 21 (73), Hektor/la-boite-immo (52), Laforêt (49), Netty (49),
+Apimo (37), l'Adresse (24), Citya (18).
+
+Trois sites sondés (la-boite-immo, deux WordPress) : **le POST anonyme est
+accepté — HTTP 200 — mais les trois portent un reCAPTCHA**. La structure des
+champs est connue (`data[Contact][email]`, `data[Contact][message]`… en
+CakePHP), donc ce n'est pas un problème de rétro-ingénierie : c'est le captcha.
+
+## 3. L'e-mail de l'agence — **la seule voie ouverte, et elle plafonne**
+
+C'est le canal retenu, et il satisfait seul les trois besoins : aucun compte
+portail, envoi depuis la boîte du client, réponse qui revient dans cette boîte.
+
+| Étape | Joignabilité |
+|---|---|
+| E-mails fuités dans le payload Bien'ici | 10,2 % |
+| + résolution depuis le site de l'agence (`agencyFeeUrl`) | **15,7 %** |
+| Plafond estimé de cette approche | ~25 % |
+
+**Pourquoi ça plafonne :** 199 agences sur 317 n'exposent aucun domaine
+exploitable. Bien'ici publie un téléphone et retient l'adresse — le formulaire
+derrière un compte *est* son produit.
+
+### L'annuaire officiel des entreprises — **testé, ne résout pas le contact**
+
+`recherche-entreprises.api.gouv.fr` (gratuit, sans clé) retrouve bien l'agence
+par sa raison sociale, avec le bon code NAF (68.31Z) et le bon code postal. Mais
+**il n'expose ni site web ni e-mail**. Utile pour identifier ou dédoublonner une
+agence ; inutile pour la contacter.
+
+Deviner un domaine depuis la raison sociale a été écarté : envoyer la candidature
+d'un client à un domaine deviné est exactement la classe d'erreur que les filtres
+du résolveur existent pour empêcher.
+
+## La décision qui reste
+
+Trois options, et c'est un arbitrage produit, pas technique :
+
+1. **D'autres sources** qui publient l'adresse — le vivier « API cachée + envoi
+   simple » est étroit, voir le tableau plus haut.
+2. **Accepter un compte Bien'ici authentifié** — débloque 100 % de leur
+   catalogue, au prix de l'envoi depuis la boîte du client, donc de la manière
+   dont on intercepte les réponses.
+3. **Une source d'adresses tierce payante** — les annuaires ouverts ne suffisent
+   pas, mesuré ci-dessus.
