@@ -16,6 +16,7 @@ import { ADAPTERS } from './adapters/registry.js';
 import { db, logEvent } from './db.js';
 import { backfillEmbeddings, linkDuplicates } from './embed.js';
 import { ingest } from './ingest.js';
+import { matchPending } from './match.js';
 
 /** A run must not outlive its schedule, or two of them overlap. */
 const RUN_TIMEOUT_MS = 4 * 60 * 1000;
@@ -40,6 +41,12 @@ async function enrich(): Promise<void> {
 
 async function main(): Promise<void> {
   if (process.env.MODE === 'enrich') return enrich();
+  if (process.env.MODE === 'match') {
+    const started = Date.now();
+    const { listings, matches } = await matchPending(Number(process.env.MATCH_LIMIT ?? 200));
+    console.log(`match: ${listings} annonce(s) examinée(s), ${matches} match(s), ${Date.now() - started} ms`);
+    return;
+  }
 
   const slug = process.env.SOURCE_SLUG;
   if (!slug) throw new Error('SOURCE_SLUG manquant');
