@@ -14,12 +14,33 @@
 
 import { ADAPTERS } from './adapters/registry.js';
 import { db, logEvent } from './db.js';
+import { backfillEmbeddings, linkDuplicates } from './embed.js';
 import { ingest } from './ingest.js';
 
 /** A run must not outlive its schedule, or two of them overlap. */
 const RUN_TIMEOUT_MS = 4 * 60 * 1000;
 
+/**
+ * Enrichment: embeddings and duplicate links.
+ *
+ * A separate mode on the same image rather than a step inside the scrape. Its
+ * work is expensive per item and its cadence is different - a listing needs
+ * embedding once, not every time we confirm it still exists - and a Vertex
+ * outage must never be able to stop listings being collected.
+ */
+async function enrich(): Promise<void> {
+  const project = process.env.GCP_PROJECT_ID;
+  if (!project) throw new Error('GCP_PROJECT_ID manquant');
+
+  const started = Date.now();
+  const linked = await linkDuplicates();
+  const embedded = await backfillEmbeddings(project, Number(process.env.ENRICH_LIMIT ?? 200));
+  console.log(`enrich: ${embedded} embedding(s), ${linked} doublon(s) lié(s), ${Date.now() - started} ms`);
+}
+
 async function main(): Promise<void> {
+  if (process.env.MODE === 'enrich') return enrich();
+
   const slug = process.env.SOURCE_SLUG;
   if (!slug) throw new Error('SOURCE_SLUG manquant');
 
