@@ -30,6 +30,23 @@ agrège Immo-Facile, Netty et d'autres. Une seule source atteint donc des
 centaines d'agences — et le nom du CMS est conservé dans `external_id`, ce qui
 servira à retrouver le site propre de chaque agence.
 
+## Les dates de publication arrivent par lots — et ça a coûté des annonces
+
+Mesuré sur 720 annonces réelles : seulement **438 horodatages distincts**, et
+jusqu'à **28 annonces partageant une date à la milliseconde près**. Bien'ici
+importe les flux d'agences par paquets et stampe tout le paquet à l'identique.
+
+Le watermark initial s'arrêtait à `published_at <= since`. Dès qu'un run se
+terminait pile sur un horodatage de lot, **tout le reste du lot était sauté —
+définitivement**, puisque le watermark du run suivant valait ce même horodatage.
+Symptôme visible : une latence de détection médiane de **41 minutes** contre un
+polling à 60 secondes, et des runs qui voyaient systématiquement 0 annonce.
+
+Le watermark est désormais **reculé de 30 minutes** avant d'être utilisé. Le
+recouvrement coûte quelques relectures par run — une annonce déjà connue matche
+sur `content_hash` et devient un simple `UPDATE` de `last_seen_at`, ~600 ms — et
+la contrainte d'unicité rend tout doublon impossible.
+
 ## Réconciliation du prix
 
 `price` est tantôt le loyer charges comprises, tantôt hors charges, et

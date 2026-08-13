@@ -57,7 +57,24 @@ async function main(): Promise<void> {
     .limit(1)
     .maybeSingle();
 
-  const since = newest?.published_at ? new Date(newest.published_at as string) : null;
+  // The watermark is deliberately rewound before it is used.
+  //
+  // Bien'ici stamps publication times in batches: up to 28 listings share one
+  // timestamp to the millisecond, because a feed import gives them all the same
+  // one. An adapter that stops at "published <= watermark" therefore drops the
+  // entire remainder of a batch the moment a run happens to end on it - not
+  // once, but permanently, because the next run's watermark is that same
+  // timestamp. Measured before the fix: 720 listings across only 438 distinct
+  // timestamps, and a median detection latency of 41 minutes against a 60
+  // second poll.
+  //
+  // Rewinding costs one cheap re-read per run - a re-seen listing matches on
+  // content_hash and becomes a single UPDATE of last_seen_at - and the unique
+  // constraint makes it impossible for the overlap to duplicate anything.
+  const WATERMARK_REWIND_MS = 30 * 60 * 1000;
+  const since = newest?.published_at
+    ? new Date(Date.parse(newest.published_at as string) - WATERMARK_REWIND_MS)
+    : null;
 
   const { data: run } = await client
     .from('scrape_runs')
