@@ -48,6 +48,47 @@ export async function execute(
   });
 }
 
+/**
+ * Can this key actually do anything?
+ *
+ * Composio keys are scoped, and a read-only key answers every listing call
+ * happily while refusing every execution. Discovered the hard way: the key
+ * supplied for this project lists Gmail's 61 tools and returns 403
+ * `tool_execution` on all of them. Without this check the failure surfaces as a
+ * confusing 403 on the first real application, long after the mailbox was
+ * connected and everything looked ready.
+ *
+ * Checked against a deliberately invalid account id, so nothing can be sent:
+ * a permissions failure answers 403 before the account is ever looked up.
+ */
+export async function canExecute(): Promise<{ ok: boolean; reason: string | null }> {
+  try {
+    const response = await fetch(`${BASE}/tools/execute/GMAIL_FETCH_EMAILS`, {
+      method: 'POST',
+      headers: { 'x-api-key': apiKey(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        connected_account_id: '__preflight__',
+        arguments: { max_results: 1 },
+      }),
+    });
+    if (response.status !== 403) return { ok: true, reason: null };
+
+    const body = (await response.json()) as { error?: { slug?: string; message?: string } };
+    if (body.error?.slug === 'APIKey_InsufficientPermissions') {
+      return {
+        ok: false,
+        reason:
+          'la clé Composio est en lecture seule : il lui manque le droit "tool_execution". ' +
+          'Aucun e-mail ne peut être envoyé ni lu tant qu\'elle n\'est pas élargie.',
+      };
+    }
+    return { ok: true, reason: null };
+  } catch (error) {
+    // A network failure is not a permissions failure; do not block on it.
+    return { ok: true, reason: null };
+  }
+}
+
 export interface SendArgs {
   readonly to: string;
   readonly subject: string;

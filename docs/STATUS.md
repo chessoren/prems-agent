@@ -27,11 +27,28 @@ ne doit pas dépendre du pipeline.
 720 embeddings  9 doublons liés (1,3 %)    44 tests       CI verte
 ```
 
-## Les deux blocages, et ils ne sont pas techniques
+## Les blocages, et ils ne sont pas techniques
 
-**1. Aucune boîte Gmail connectée.** Rien ne peut partir. Le système refuse
-proprement — les matches restent `new` et attendent, ils ne sont plus consommés.
-Connecter un compte via Composio débloque tout le reste.
+**0. La clé Composio est en lecture seule — bloquant, et prioritaire.**
+
+Vérifié en appelant l'API : la clé liste les 61 outils Gmail et refuse de les
+exécuter. Elle n'a **aucun droit `tool_execution`**, ni `connected_accounts` en
+écriture, ni `auth_configs` en écriture.
+
+Conséquence : impossible d'envoyer un e-mail, d'en lire un, ou de créer un
+événement d'agenda — **même une fois Gmail connecté**. Il faut élargir la clé
+dans les paramètres Composio (`tool_execution`, `connected_accounts`,
+`auth_configs` en écriture) ou en générer une nouvelle avec ces droits.
+
+Un préflight dans `prems-apply` échoue désormais avec ce message exact avant de
+toucher la moindre candidature, plutôt que de laisser découvrir un 403 au
+moment du premier envoi réel.
+
+**1. Aucune boîte Gmail connectée.** Une configuration d'authentification Gmail
+existe (`ac_BDCvl8Std_Rq`) mais aucun compte n'y est rattaché. Il n'existe pas de
+configuration Google Calendar — je n'ai pas pu la créer, faute de droits (voir
+ci-dessus). Le système refuse proprement : les matches restent `new` et
+attendent, ils ne sont plus consommés.
 
 **2. La joignabilité plafonne à ~25 %.** Les trois voies ont été testées et
 mesurées (voir `sources/README.md`). C'est un arbitrage produit :

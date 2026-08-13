@@ -11,7 +11,7 @@
  * exactly what makes a human look like a bot.
  */
 import { db, logEvent } from './db.js';
-import { sendEmail } from './composio.js';
+import { canExecute, sendEmail } from './composio.js';
 import { writeDraft, type DraftInput } from './draft.js';
 
 /**
@@ -91,6 +91,15 @@ export async function queueApplications(limit = 50): Promise<number> {
  */
 export async function sendDue(project: string, limit = 20): Promise<{ sent: number; failed: number }> {
   const client = db();
+
+  // Fail loudly, before touching a single application. A read-only Composio key
+  // refuses every send while answering every listing call, so without this the
+  // first symptom is a 403 on a real client's application.
+  const preflight = await canExecute();
+  if (!preflight.ok) {
+    await logEvent({ type: 'composio.misconfigured', payload: { reason: preflight.reason } });
+    throw new Error(preflight.reason ?? 'Composio ne peut pas exécuter d\'outil');
+  }
   const now = new Date().toISOString();
 
   const { data: due } = await client
