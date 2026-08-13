@@ -17,6 +17,7 @@ import { db, logEvent } from './db.js';
 import { backfillEmbeddings, linkDuplicates } from './embed.js';
 import { ingest } from './ingest.js';
 import { matchPending } from './match.js';
+import { queueApplications, sendDue } from './apply.js';
 
 /** A run must not outlive its schedule, or two of them overlap. */
 const RUN_TIMEOUT_MS = 4 * 60 * 1000;
@@ -41,6 +42,15 @@ async function enrich(): Promise<void> {
 
 async function main(): Promise<void> {
   if (process.env.MODE === 'enrich') return enrich();
+  if (process.env.MODE === 'apply') {
+    const project = process.env.GCP_PROJECT_ID;
+    if (!project) throw new Error('GCP_PROJECT_ID manquant');
+    const started = Date.now();
+    const queued = await queueApplications(Number(process.env.QUEUE_LIMIT ?? 50));
+    const { sent, failed } = await sendDue(project, Number(process.env.SEND_LIMIT ?? 20));
+    console.log(`apply: ${queued} mise(s) en file, ${sent} envoyée(s), ${failed} en échec, ${Date.now() - started} ms`);
+    return;
+  }
   if (process.env.MODE === 'match') {
     const started = Date.now();
     const { listings, matches } = await matchPending(Number(process.env.MATCH_LIMIT ?? 200));
