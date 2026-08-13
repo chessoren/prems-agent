@@ -18,6 +18,7 @@ import { backfillEmbeddings, linkDuplicates } from './embed.js';
 import { ingest } from './ingest.js';
 import { matchPending } from './match.js';
 import { queueApplications, sendDue } from './apply.js';
+import { watchAllInboxes } from './inbox.js';
 
 /** A run must not outlive its schedule, or two of them overlap. */
 const RUN_TIMEOUT_MS = 4 * 60 * 1000;
@@ -42,6 +43,14 @@ async function enrich(): Promise<void> {
 
 async function main(): Promise<void> {
   if (process.env.MODE === 'enrich') return enrich();
+  if (process.env.MODE === 'inbox') {
+    const project = process.env.GCP_PROJECT_ID;
+    if (!project) throw new Error('GCP_PROJECT_ID manquant');
+    const started = Date.now();
+    const { clients, replies } = await watchAllInboxes(project);
+    console.log(`inbox: ${clients} boîte(s) lue(s), ${replies} réponse(s) traitée(s), ${Date.now() - started} ms`);
+    return;
+  }
   if (process.env.MODE === 'apply') {
     const project = process.env.GCP_PROJECT_ID;
     if (!project) throw new Error('GCP_PROJECT_ID manquant');
