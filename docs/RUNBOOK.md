@@ -88,13 +88,21 @@ Ajouter une source : un adaptateur, une ligne dans `ADAPTERS`, une ligne dans
 `sources`, puis un job et un tick qui ne diffèrent que par `SOURCE_SLUG`. La
 même image sert tout le monde.
 
-### Les trois jobs déployés
+### Les cinq jobs déployés
 
 | Job | Mode | Cadence | Rôle |
 |---|---|---|---|
 | `prems-scrape-bienici` | `SOURCE_SLUG=bienici` | `* * * * *` | collecte |
 | `prems-enrich` | `MODE=enrich` | `*/5 * * * *` | embeddings + liens de doublons |
-| `prems-match` | `MODE=match` | `* * * * *` | matching + événements |
+| `prems-match` | `MODE=match` | `* * * * *` | matching + équité |
+| `prems-apply` | `MODE=apply` | `*/2 * * * *` | candidatures par e-mail |
+| `prems-inbox` | `MODE=inbox` | `0 8 * * *` | lecture des réponses, agenda |
+
+Secrets montés : `supabase-service-role-key`, `composio-api-key`.
+
+**Lire un état de planificateur.** `status: {"code":-1}` signifie **« jamais
+tenté »**, pas une erreur — je m'y suis laissé prendre. Un `status: {}` après un
+`lastAttemptTime` est un succès.
 
 Une seule image (`:v3`) sert les trois ; seules les variables d'environnement
 diffèrent.
@@ -193,6 +201,28 @@ plutôt qu'un tableau vide : le catalogue doit être chaud avant l'arrivée du
 premier client, pas vide le matin de son inscription.
 
 ---
+
+## Diagnostic du pipeline complet
+
+```sql
+select * from public.funnel;          -- annonces -> joignables -> matches -> envois
+select * from public.contactability;  -- % d'annonces avec e-mail agence, par source
+select * from public.source_health;   -- silence, production nulle, source injoignable
+select * from public.events where type = 'source.alert' order by id desc limit 5;
+```
+
+`funnel.contactable` est le chiffre à surveiller : détecter une annonce sans
+pouvoir y candidater ne sert à rien.
+
+### Candidatures bloquées
+
+```sql
+select dead_letter_reason, count(*)
+from public.applications where dead_letter group by 1;
+```
+
+`aucune boîte Gmail connectée` n'est pas un incident : c'est un client qui n'a pas
+terminé la connexion Composio. Aucun retry ne le réparera, d'où la DLQ immédiate.
 
 ## Vérifier que la RLS tient toujours
 
