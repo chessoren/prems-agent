@@ -58,3 +58,21 @@ describe('agency address selection', () => {
     expect(pickForTest(['noreply@agence.fr'], 'agence.fr')).toBeNull();
   });
 });
+
+describe('dead-lettering', () => {
+  // Not a unit test of the worker - a statement of the rule the worker broke.
+  //
+  // The first version dead-lettered "no Gmail connected", which is permanent,
+  // for a condition the client fixes by connecting their mailbox. It consumed
+  // 103 matches in twenty minutes.
+  it('separates what cannot succeed from what cannot succeed yet', () => {
+    const permanent = ['adresse refusée par le fournisseur', 'message malformé'];
+    const recoverable = ['aucune boîte Gmail connectée', 'quota temporairement dépassé'];
+
+    const isPermanent = (reason: string) =>
+      !/gmail|connect|quota|temporaire|réseau/i.test(reason);
+
+    for (const r of permanent) expect(isPermanent(r)).toBe(true);
+    for (const r of recoverable) expect(isPermanent(r)).toBe(false);
+  });
+});

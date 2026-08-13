@@ -14,7 +14,12 @@ import { db, logEvent } from './db.js';
 import { sendEmail } from './composio.js';
 import { writeDraft, type DraftInput } from './draft.js';
 
-/** Backoff between attempts. Five failures and the message is dead-lettered. */
+/**
+ * Backoff between attempts. Five failures and the message is dead-lettered.
+ *
+ * Dead-lettering is for a message that cannot succeed - a rejected address, a
+ * malformed send. It is never for a precondition the client can still satisfy.
+ */
 const BACKOFF_MINUTES = [1, 5, 30, 180, 720] as const;
 const MAX_ATTEMPTS = BACKOFF_MINUTES.length;
 
@@ -108,12 +113,20 @@ export async function sendDue(project: string, limit = 20): Promise<{ sent: numb
       .maybeSingle();
 
     if (!profile?.gmail_account_id) {
+      // Defence in depth: matches_ready_to_send already excludes clients with
+      // no mailbox, so reaching here means one was disconnected after queuing.
+      //
+      // Deliberately NOT dead-lettered. An earlier version did, on the
+      // reasoning that no retry creates a mailbox - true, but a reconnection
+      // does, and a dead letter is permanent. It consumed 103 matches in
+      // twenty minutes: 103 apartments that would have stayed lost on the day
+      // the client finally connected their Gmail.
       await client
         .from('applications')
         .update({
-          dead_letter: true,
-          dead_letter_reason: 'aucune boîte Gmail connectée pour ce client',
           status: 'failed',
+          last_error: 'aucune boîte Gmail connectée',
+          next_attempt_at: new Date(Date.now() + 6 * 3600_000).toISOString(),
         })
         .eq('id', app.id as string);
       await logEvent({
