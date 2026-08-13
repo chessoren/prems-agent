@@ -9,7 +9,7 @@
 | Pagination | `from` / `size`, 100 par page |
 | Anti-bot | aucun depuis une IP datacenter américaine |
 | Volume | ~925 000 annonces de location |
-| Canal de candidature | `POST /api/contactRequests` — **endpoint vérifié, non authentifié** |
+| Canal de candidature | `POST /api/contactRequests` — **authentifié (401 sans compte)** |
 
 ## Ce qui a été établi en sondant l'API, pas supposé
 
@@ -77,30 +77,41 @@ Qualité sur les 204 premières annonces d'Île-de-France : 204/204 géocodées,
 189/204 avec DPE. Loyers moyens cohérents par département (Paris 2 316 €,
 Seine-Saint-Denis 894 €).
 
-## Le canal de candidature
-
-Trouvé dans `commonModern.js`, pas deviné : les cinq chemins essayés au hasard
-renvoyaient tous 404.
+## Le canal de candidature — et une conclusion que j'avais tirée trop vite
 
 ```
 POST https://www.bienici.com/api/contactRequests
-Content-Type: application/json
-Referer: https://www.bienici.com/
 ```
 
-Non authentifié. Une charge vide reçoit un **400** avec un schéma de validation
-qui nomme les champs manquants :
+Trouvé dans `commonModern.js`. Une charge vide reçoit un **400** nommant les
+champs manquants, `realEstateAdIds` et `contact`.
 
-```
-OBJECT_MISSING_REQUIRED_PROPERTY : realEstateAdIds
-OBJECT_MISSING_REQUIRED_PROPERTY : contact
-```
+**J'en avais conclu que l'endpoint était non authentifié. C'était faux.** Le 400
+est une erreur de *schéma* : la validation de forme passe avant le contrôle
+d'identité. Dès que la charge devient structurellement valide, la réponse est
+un **401 `Missing credentials`**. Il faut un compte Bien'ici connecté.
 
-`realEstateAdIds` est un tableau — le même endpoint contacte donc plusieurs
-annonces en une requête.
+Il n'existe qu'un seul chemin de contact dans tout le bundle — pas de variante
+anonyme à côté.
 
-**Bien'ici satisfait les deux critères du MVP** : lecture par API JSON cachée,
-et envoi par POST HTTP simple. Pas de navigateur, pas de captcha sur ce chemin.
+### Ce que ça change
+
+Bien'ici satisfait pleinement le premier critère (lecture par API JSON cachée)
+mais **pas le second tel qu'il était formulé** : « envoi facilité par POST sans
+friction ». Candidater exige de créer un compte Prems sur Bien'ici, de
+s'authentifier et de maintenir cette session — ce qui soulève trois questions
+qui ne sont pas techniques :
+
+- les candidatures partiraient d'**un compte Prems**, pas de la boîte du client,
+  ce qui contredit le choix fait en Q16 (envoi depuis le Gmail du client) ;
+- automatiser un compte relève des CGU du site, pas seulement de la technique ;
+- un compte unique pour tous les clients est un point de blocage et de
+  traçabilité côté Bien'ici.
+
+La leçon de méthode, elle, est nette : **un 400 de schéma ne prouve pas
+l'absence d'authentification.** Il prouve seulement que le validateur de forme
+s'exécute en premier. La vérification correcte est de rendre la charge valide
+et de regarder ce qui répond ensuite.
 
 ### Ce qui n'a délibérément pas été fait
 
