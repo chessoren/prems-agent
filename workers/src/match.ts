@@ -61,11 +61,20 @@ export async function matchListing(listingId: string, now = new Date()): Promise
 
   const { data: listingRow } = await client.from('listings').select('*').eq('id', listingId).single();
   if (!listingRow) return 0;
+
+  // Mark it considered up front, whatever the outcome. A listing nobody is
+  // eligible for produces no match rows, and without this it would return to
+  // the queue on every run and keep the newest listings waiting behind it.
+  const markConsidered = () =>
+    client.from('listings').update({ matched_at: new Date().toISOString() }).eq('id', listingId);
   const listing = toListing(listingRow);
 
   const { data: eligible } = await client.rpc('eligible_clients', { p_listing_id: listingId });
   const candidates = (eligible ?? []) as Eligible[];
-  if (candidates.length === 0) return 0;
+  if (candidates.length === 0) {
+    await markConsidered();
+    return 0;
+  }
 
   const { data: cfg } = await client.from('settings').select('*').eq('id', 1).single();
   const perListing: number = cfg?.applications_per_listing ?? 1;
@@ -128,6 +137,7 @@ export async function matchListing(listingId: string, now = new Date()): Promise
     }
   }
 
+  await markConsidered();
   return served.length;
 }
 
