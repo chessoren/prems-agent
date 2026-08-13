@@ -20,7 +20,7 @@
 import { createSign } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { db, logEvent } from './db.js';
-import { createCalendarEvent, fetchEmails } from './composio.js';
+import { canExecute, createCalendarEvent, fetchEmails } from './composio.js';
 
 const LOCATION = 'europe-west9';
 const MODEL = 'gemini-2.5-flash-lite';
@@ -314,6 +314,15 @@ export async function watchInbox(userId: string, project: string): Promise<numbe
 
 /** Every client with a connected mailbox. Runs each morning. */
 export async function watchAllInboxes(project: string): Promise<{ clients: number; replies: number }> {
+  // Same preflight as the send path. This job runs once a morning, so a
+  // permissions failure discovered here would otherwise cost a full day before
+  // anyone saw why no reply was ever picked up.
+  const preflight = await canExecute();
+  if (!preflight.ok) {
+    await logEvent({ type: 'composio.misconfigured', payload: { reason: preflight.reason, job: 'inbox' } });
+    throw new Error(preflight.reason ?? 'Composio ne peut pas exécuter d\'outil');
+  }
+
   const client = db();
   const { data: profiles } = await client
     .from('profiles')
