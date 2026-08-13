@@ -105,11 +105,20 @@ se duplique — la contrainte d'unicité sur `matches` l'interdit — mais du ca
 est gaspillé. À surveiller via la durée des exécutions, et à corriger en
 espaçant le tick ou en réduisant `MATCH_LIMIT`.
 
-**Latence de matching : toujours non mesurée proprement.** Le chiffre de 1,9 s
-par annonce vient du bac à sable américain contre une base en `eu-west-1`, où un
-simple aller-retour coûte déjà 0,5 à 0,85 s. Le job tourne désormais en
-`europe-west9` : la mesure valide est la durée loggée par `prems-match`, à
-relever une fois quelques exécutions terminées.
+**Latence de matching : mesurée, cible atteinte.** Un run complet de
+`prems-match` prend **1 min 18 pour un lot de 200 annonces**, soit **≈ 390 ms
+par annonce** contre une cible de 1 000 ms. 10 exécutions réussies, 0 échec.
+
+Le chiffre précédent de 1,9 s par annonce était un artefact : il venait du bac à
+sable américain contre une base en `eu-west-1`, où un simple aller-retour coûte
+déjà 0,5 à 0,85 s. **Le réseau pesait cinq fois l'algorithme.** La leçon vaut
+d'être retenue pour tout futur bench : mesurer ailleurs que là où le code
+tournera ne mesure pas le code.
+
+Réserve : les 390 ms supposent que le lot était plein (200 annonces). C'est
+plausible — la file en contenait encore 320 — mais c'est une inférence, pas une
+lecture directe. La ligne `match: … ms` loggée par le job donnerait le chiffre
+exact ; elle n'apparaît pas dans le filtre de logs utilisé.
 
 ### 4. Le modèle Gemini demandé n'existe pas
 
