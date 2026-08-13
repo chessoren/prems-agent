@@ -19,6 +19,7 @@ import { ingest } from './ingest.js';
 import { matchPending } from './match.js';
 import { queueApplications, sendDue } from './apply.js';
 import { watchAllInboxes } from './inbox.js';
+import { resolveAgencies } from './agency.js';
 
 /** A run must not outlive its schedule, or two of them overlap. */
 const RUN_TIMEOUT_MS = 4 * 60 * 1000;
@@ -43,6 +44,15 @@ async function enrich(): Promise<void> {
 
 async function main(): Promise<void> {
   if (process.env.MODE === 'enrich') return enrich();
+  if (process.env.MODE === 'agencies') {
+    const started = Date.now();
+    const r = await resolveAgencies(Number(process.env.AGENCY_LIMIT ?? 25));
+    console.log(
+      `agencies: ${r.tried} sondée(s), ${r.found} adresse(s) trouvée(s), ` +
+        `${r.propagated} annonce(s) débloquée(s), ${Date.now() - started} ms`,
+    );
+    return;
+  }
   if (process.env.MODE === 'inbox') {
     const project = process.env.GCP_PROJECT_ID;
     if (!project) throw new Error('GCP_PROJECT_ID manquant');
