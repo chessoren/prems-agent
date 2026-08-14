@@ -120,3 +120,44 @@ une vraie agence, au nom d'une personne — le faire pour tester reviendrait à
 envoyer du spam à un professionnel sous une fausse identité. Le contrat de
 l'API est établi ; le premier envoi réel appartient à la Phase 6, avec le
 consentement d'un client, son dossier, et une annonce qu'il veut réellement.
+
+
+---
+
+## Le formulaire de contact : question ouverte, et comment la trancher en 2 min
+
+`POST /api/contactRequests` refuse toutes mes tentatives anonymes :
+
+| Essai | Réponse |
+|---|---|
+| charge vide | 401 `Missing credentials` |
+| `contact` avec `firstName`, `lastName`, `email`, `phone` | 400 — *additional properties not allowed* sur les quatre |
+| `contact` avec `message` seul | 401 `Missing credentials` |
+| idem + cookies de session anonyme | 401 |
+
+Autrement dit : l'objet `contact` n'accepte que `message`, et l'identité doit
+venir d'ailleurs — session ou compte. Ça contredit ce que fait visiblement le
+formulaire du site, qui demande nom, e-mail et téléphone.
+
+**Je n'ai pas pu observer la requête réelle** : Chromium ne franchit pas le proxy
+sortant de l'environnement de développement vers `bienici.com`, alors que `curl`
+y arrive. C'est une limite de l'environnement, pas une conclusion.
+
+### La vérification, à faire depuis un vrai navigateur
+
+1. Ouvrir une annonce de location sur bienici.com.
+2. Ouvrir les outils de développement, onglet **Réseau**, filtrer sur `contact`.
+3. Remplir le formulaire de contact et l'envoyer **sur une annonce réelle qui
+   vous intéresse** — pas sur une annonce au hasard : la demande part vraiment
+   chez un agent.
+4. Relever la requête : URL exacte, en-têtes (notamment `Authorization`, `Cookie`,
+   `X-*`), et le corps JSON complet.
+
+Si le corps contient l'identité et qu'aucun en-tête d'authentification
+n'apparaît, l'envoi anonyme est possible et **la joignabilité passe de 15,7 % à
+100 %**. Le canal `form_post` est déjà prévu dans `sources.contact_channel` et
+dans le worker ; il ne manquera que la forme exacte du corps.
+
+S'il y a un jeton ou un cookie de session authentifiée, il faudra créer un
+compte Bien'ici — ce qui change qui envoie la candidature, et donc où arrivent
+les réponses.
