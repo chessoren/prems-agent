@@ -29,28 +29,31 @@ ne doit pas dépendre du pipeline.
 
 ## Les blocages, et ils ne sont pas techniques
 
-**0. La clé Composio est en lecture seule — bloquant, et prioritaire.**
+**0. La clé Composio — résolu.** La clé d'origine était en lecture seule. La
+nouvelle exécute les outils et écrit les configurations ; elle est en Secret
+Manager et les jobs la montent. Le préflight passe.
 
-Vérifié en appelant l'API : la clé liste les 61 outils Gmail et refuse de les
-exécuter. Elle n'a **aucun droit `tool_execution`**, ni `connected_accounts` en
-écriture, ni `auth_configs` en écriture.
+**1. Aucune boîte Gmail connectée — une action, deux liens.**
 
-Conséquence : impossible d'envoyer un e-mail, d'en lire un, ou de créer un
-événement d'agenda — **même une fois Gmail connecté**. Il faut élargir la clé
-dans les paramètres Composio (`tool_execution`, `connected_accounts`,
-`auth_configs` en écriture) ou en générer une nouvelle avec ces droits.
+Les deux configurations existent : Gmail `ac_BDCvl8Std_Rq`, Google Calendar
+`ac_H4AoPOZxFKAL` (créée avec la nouvelle clé). Les liens d'autorisation sont
+générés ; il suffit de les suivre puis d'écrire l'identifiant du compte dans
+`profiles.gmail_account_id` / `calendar_account_id`. Voir `FRONTEND.md`,
+section « Connecter la boîte mail ».
 
-Un préflight dans `prems-apply` échoue désormais avec ce message exact avant de
-toucher la moindre candidature, plutôt que de laisser découvrir un 403 au
-moment du premier envoi réel.
+Tant que c'est nul, le pipeline n'engage rien : les matches restent `new` et
+attendent.
 
-**1. Aucune boîte Gmail connectée.** Une configuration d'authentification Gmail
-existe (`ac_BDCvl8Std_Rq`) mais aucun compte n'y est rattaché. Il n'existe pas de
-configuration Google Calendar — je n'ai pas pu la créer, faute de droits (voir
-ci-dessus). Le système refuse proprement : les matches restent `new` et
-attendent, ils ne sont plus consommés.
+**2. La joignabilité — à reconfirmer.** Mesurée à 15,7 % par l'e-mail direct.
+Le formulaire de contact de Bien'ici couvrirait 100 % du catalogue, mais mes
+tests le trouvent authentifié : 401 avec charge valide, 401 avec cookies de
+session anonyme, et l'objet `contact` refuse tous les champs d'identité
+(`firstName`, `email`, `phone` → « additional properties not allowed »). Le
+formulaire du navigateur fait peut-être une étape que je n'ai pas reproduite —
+à trancher en observant la requête réelle depuis un navigateur.
 
-**2. La joignabilité plafonne à ~25 %.** Les trois voies ont été testées et
+Si elle passe, la joignabilité monte à 100 % et le canal `form_post` est déjà
+prévu dans le schéma. Sinon, l'arbitrage reste : Les trois voies ont été testées et
 mesurées (voir `sources/README.md`). C'est un arbitrage produit :
 
 - d'autres sources qui publient l'adresse — vivier étroit ;
