@@ -379,6 +379,31 @@ alter table public.searches
 comment on column public.searches.free_text_embedded_hash is
   'md5 du free_text au moment où l''embedding a été calculé. Diffère du texte courant = à recalculer.';
 
+-- Deleting the text must delete the vector.
+--
+-- `semantic_score` gates on `free_text_embedding is not null`, not on
+-- `free_text`. So a client who clears their free text would go on being scored
+-- against the sentence they just deleted, for ever, with nothing in the
+-- interface to suggest it. The worker cannot fix this - it only ever looks at
+-- rows that *have* text - so it belongs where the write happens.
+create or replace function public.clear_stale_search_embedding()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.free_text is distinct from old.free_text then
+    new.free_text_embedding := null;
+    new.free_text_embedded_hash := null;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists searches_clear_embedding on public.searches;
+create trigger searches_clear_embedding
+  before update of free_text on public.searches
+  for each row execute function public.clear_stale_search_embedding();
+
 create or replace function public.searches_needing_embedding(want integer default 50)
 returns table (id uuid, free_text text)
 language sql
