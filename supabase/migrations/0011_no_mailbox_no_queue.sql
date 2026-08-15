@@ -41,7 +41,19 @@ delete from public.applications
    and sent_at is null
    and dead_letter_reason like '%Gmail%';
 
+-- Bounded in time, and that bound is the point.
+--
+-- Migrations here are re-applied in full on every run, which is fine for a
+-- statement that describes an invariant and wrong for one that describes an
+-- incident. Unbounded, this repair kept firing long after the incident it
+-- repaired: it erased *every* skip reason in the table on each migrate,
+-- including the legitimate ones written later at queue time (`daily_cap`,
+-- `agency_cooldown`) and the corrections made in 0012, which run after it and
+-- found nothing left to correct.
+--
+-- A repair belongs to a moment. This one belongs to the afternoon of the 14th.
 update public.matches m
    set status = 'new', skipped_reason = null
  where m.status in ('queued', 'skipped')
+   and m.created_at < timestamptz '2026-08-15 00:00:00+00'
    and not exists (select 1 from public.applications a where a.match_id = m.id);

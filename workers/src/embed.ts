@@ -11,7 +11,7 @@
  * endpoint. The corpus is French: text-embedding-004 is trained mostly on
  * English and would be the wrong tool sold as the newer one.
  */
-import { createSign } from 'node:crypto';
+import { createHash, createSign } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { db, logEvent } from './db.js';
 
@@ -71,7 +71,19 @@ async function accessToken(): Promise<string> {
   return j.access_token;
 }
 
-export async function embedTexts(texts: readonly string[], project: string): Promise<number[][]> {
+/**
+ * `RETRIEVAL_DOCUMENT` for the things being searched over, `RETRIEVAL_QUERY`
+ * for what someone is searching with. The pair is asymmetric by design in this
+ * model family, and using one where the other belongs costs recall without
+ * costing an error.
+ */
+type TaskType = 'RETRIEVAL_DOCUMENT' | 'RETRIEVAL_QUERY';
+
+export async function embedTexts(
+  texts: readonly string[],
+  project: string,
+  taskType: TaskType = 'RETRIEVAL_DOCUMENT',
+): Promise<number[][]> {
   if (texts.length === 0) return [];
   const token = await accessToken();
   const url =
@@ -81,10 +93,8 @@ export async function embedTexts(texts: readonly string[], project: string): Pro
   const response = await fetch(url, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    // RETRIEVAL_DOCUMENT is the right task type: these are the things being
-    // searched over, not the query. Using the default would quietly cost recall.
     body: JSON.stringify({
-      instances: texts.map((content) => ({ content, task_type: 'RETRIEVAL_DOCUMENT' })),
+      instances: texts.map((content) => ({ content, task_type: taskType })),
     }),
   });
   if (!response.ok) throw new Error(`Vertex: HTTP ${response.status} ${(await response.text()).slice(0, 200)}`);
@@ -152,6 +162,55 @@ export async function backfillEmbeddings(project: string, limit = 200): Promise<
     if (payload.length) {
       const { error } = await client.from('listing_embeddings').upsert(payload, { onConflict: 'listing_id' });
       if (!error) written += payload.length;
+    }
+  }
+  return written;
+}
+
+/**
+ * The other half of the semantic score, which never existed.
+ *
+ * `semantic_score` compares a listing's embedding to
+ * `searches.free_text_embedding`. Nothing wrote that column - not this worker,
+ * not the onboarding - so the 15% semantic term was null for every match ever
+ * scored. Null is handled gracefully: the weight is redistributed over the
+ * other terms. That is exactly why it went unnoticed for the whole build. No
+ * error, no zero, no missing row - just a quarter of the ranking that had
+ * quietly been switched off.
+ *
+ * It has cost nothing so far because no client has written free text yet. The
+ * day one does is the day it would have started costing silently.
+ */
+export async function backfillSearchEmbeddings(project: string, limit = 50): Promise<number> {
+  const client = db();
+
+  const { data: wanted } = await client.rpc('searches_needing_embedding', { want: limit });
+  const rows = (wanted ?? []) as Array<{ id: string; free_text: string }>;
+  if (rows.length === 0) return 0;
+
+  let written = 0;
+  for (let i = 0; i < rows.length; i += BATCH) {
+    const slice = rows.slice(i, i + BATCH);
+    const vectors = await embedTexts(
+      slice.map((r) => r.free_text),
+      project,
+      'RETRIEVAL_QUERY',
+    );
+
+    for (const [index, row] of slice.entries()) {
+      const vector = vectors[index];
+      if (!vector?.length) continue;
+      // The hash, not a timestamp: `searches_touch` bumps `updated_at` on this
+      // very write, so a time-based cursor would re-embed the same row every
+      // run for ever. See 0012.
+      const { error } = await client
+        .from('searches')
+        .update({
+          free_text_embedding: vector,
+          free_text_embedded_hash: createHash('md5').update(row.free_text).digest('hex'),
+        })
+        .eq('id', row.id);
+      if (!error) written += 1;
     }
   }
   return written;

@@ -14,10 +14,10 @@
 
 import { ADAPTERS } from './adapters/registry.js';
 import { db, logEvent } from './db.js';
-import { backfillEmbeddings, linkDuplicates } from './embed.js';
+import { backfillEmbeddings, backfillSearchEmbeddings, linkDuplicates } from './embed.js';
 import { ingest } from './ingest.js';
 import { matchPending } from './match.js';
-import { queueApplications, sendDue } from './apply.js';
+import { closeLostMatches, queueApplications, sendDue } from './apply.js';
 import { watchAllInboxes } from './inbox.js';
 import { resolveAgencies } from './agency.js';
 
@@ -39,7 +39,13 @@ async function enrich(): Promise<void> {
   const started = Date.now();
   const linked = await linkDuplicates();
   const embedded = await backfillEmbeddings(project, Number(process.env.ENRICH_LIMIT ?? 200));
-  console.log(`enrich: ${embedded} embedding(s), ${linked} doublon(s) lié(s), ${Date.now() - started} ms`);
+  // The client's side of the semantic score. Cheap - there are as many of these
+  // as there are searches - and it was missing entirely until 0012.
+  const criteria = await backfillSearchEmbeddings(project, Number(process.env.SEARCH_ENRICH_LIMIT ?? 50));
+  console.log(
+    `enrich: ${embedded} embedding(s), ${criteria} critère(s) vectorisé(s), ` +
+      `${linked} doublon(s) lié(s), ${Date.now() - started} ms`,
+  );
 }
 
 async function main(): Promise<void> {
@@ -67,7 +73,14 @@ async function main(): Promise<void> {
     const started = Date.now();
     const queued = await queueApplications(Number(process.env.QUEUE_LIMIT ?? 50));
     const { sent, failed } = await sendDue(project, Number(process.env.SEND_LIMIT ?? 20));
-    console.log(`apply: ${queued} mise(s) en file, ${sent} envoyée(s), ${failed} en échec, ${Date.now() - started} ms`);
+    // Only now can a runner-up be told somebody was served: after the send, not
+    // before it. Closing them at match time is what burned 61 candidates for
+    // applications that were never made.
+    const closed = await closeLostMatches();
+    console.log(
+      `apply: ${queued} mise(s) en file, ${sent} envoyée(s), ${failed} en échec, ` +
+        `${closed} non servi(s) clos, ${Date.now() - started} ms`,
+    );
     return;
   }
   if (process.env.MODE === 'match') {

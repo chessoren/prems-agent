@@ -23,9 +23,13 @@ ne doit pas dépendre du pipeline.
 ## Les chiffres, mesurés
 
 ```
-722 annonces    113 joignables (15,7 %)    997 matches    0 en DLQ
-720 embeddings  9 doublons liés (1,3 %)    44 tests       CI verte
+815 annonces    146 joignables (17,9 %)    737 matches    0 en DLQ
+1 440 runs/24 h  0 échec                   49 tests       CI verte
 ```
+
+Les matches sont passés de 1 230 à 737 non pas en perdant quelque chose, mais
+en cessant de compter deux fois : 493 étaient le même appartement trouvé par
+les deux recherches d'un même client.
 
 ## Les blocages, et ils ne sont pas techniques
 
@@ -92,7 +96,19 @@ aucune erreur.
 | `search_path` sans `extensions` | pgvector invisible |
 | File de matching sans curseur | Retraitait les mêmes annonces à l'infini |
 | DLQ sur « pas de Gmail » | 103 appartements perdus le jour de la connexion |
+| Un client concourant contre lui-même | 86 refus faux, affichés au client, et le plafond starvé |
+| Plafond dépensé avant l'envoi | 61 candidats brûlés pour des candidatures jamais faites |
+| Alerte sur une config permanente | 22 alarmes/jour, et un vrai silence retardé d'une heure |
+| Réparation de migration non bornée | Effaçait l'historique des skips à chaque `db:migrate` |
+| `skipped_reason` jamais remis à zéro | 7 matches « servis » affichant « quelqu'un d'autre a été servi » |
+| Score sémantique sans vecteur client | 15 % du classement éteint, sans erreur ni zéro visible |
 
 Deux pièges de méthode valent d'être retenus : **un 400 de schéma ne prouve
 jamais l'absence d'authentification**, et **un `code: -1` de Cloud Scheduler
 signifie « jamais tenté », pas « échec »**.
+
+Les six derniers ont tous été trouvés en interrogeant ce que le système
+produisait, pas en relisant ce qui le produit. Le plus instructif est le
+premier : « 147 matches écartés » semblait normal jusqu'à ce qu'on demande
+*qui* avait gagné. La réponse — le même client, avec son autre recherche — ne
+figurait dans aucun log.

@@ -47,7 +47,26 @@ export async function queueApplications(limit = 50): Promise<number> {
   const ready = (data ?? []) as Ready[];
   let queued = 0;
 
+  // The batch sees its own inserts.
+  //
+  // `matches_ready_to_send` evaluates "has this client already applied for this
+  // listing?" once, when the batch is read. A client holding two searches that
+  // both match one apartment therefore appears twice in the same batch, and
+  // without this both rows become applications - two messages to the same agent
+  // about the same flat from the same person. A unique index (0012) makes it
+  // impossible; this makes it a skip with a reason rather than a crash.
+  const claimed = new Set<string>();
+
   for (const row of ready) {
+    const pair = `${row.user_id}:${row.listing_id}`;
+    if (claimed.has(pair)) {
+      await client
+        .from('matches')
+        .update({ status: 'skipped', skipped_reason: 'duplicate_of_your_other_search' })
+        .eq('id', row.match_id);
+      continue;
+    }
+
     const { data: gate } = await client.rpc('may_send', {
       p_user_id: row.user_id,
       p_agency_email: row.agency_email,
@@ -75,11 +94,26 @@ export async function queueApplications(limit = 50): Promise<number> {
     });
 
     if (!error) {
+      claimed.add(pair);
       await client.from('matches').update({ status: 'queued' }).eq('id', row.match_id);
       queued += 1;
     }
   }
   return queued;
+}
+
+/**
+ * Tell the runners-up, once there is something they actually lost to.
+ *
+ * A match stays `new` - eligible, and rescuable if the winner's send fails -
+ * until an application for that listing has genuinely left the building. Only
+ * then is "somebody with higher priority was served" a true sentence, and only
+ * then is it written down.
+ */
+export async function closeLostMatches(): Promise<number> {
+  const client = db();
+  const { data } = await client.rpc('close_lost_matches');
+  return typeof data === 'number' ? data : 0;
 }
 
 /**

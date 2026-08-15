@@ -50,6 +50,47 @@ function toCriteria(r: Record<string, any>): SearchCriteria {
 }
 
 /**
+ * One row per client, not per search.
+ *
+ * A client holding two active searches produced two candidate rows with the
+ * same user and the same priority. The old cut took the first and told the
+ * second that a higher-priority *client* had been served - false, and shown to
+ * the client. Measured on live data before the fix: 86 of 147 skips were a
+ * client losing to themselves.
+ *
+ * The subtler cost was in the cap. `applications_per_listing` counts rows, and
+ * a client's rows are adjacent because their priority is identical - so at a
+ * cap of 2, one client with two searches took both slots and starved the
+ * rotation the cap exists to create.
+ *
+ * Their own best-scoring search wins: that is the criteria the flat actually
+ * fits. Order is otherwise preserved, because `eligible_clients` already
+ * returned it by priority and that ordering is the fairness guarantee.
+ */
+export function collapsePerClient<T extends { c: { user_id: string }; score: number }>(
+  scored: readonly T[],
+): { served: T[]; alsoRan: T[] } {
+  const best = new Map<string, T>();
+  const order: string[] = [];
+  const alsoRan: T[] = [];
+
+  for (const s of scored) {
+    const held = best.get(s.c.user_id);
+    if (!held) {
+      best.set(s.c.user_id, s);
+      order.push(s.c.user_id);
+    } else if (s.score > held.score) {
+      best.set(s.c.user_id, s);
+      alsoRan.push(held);
+    } else {
+      alsoRan.push(s);
+    }
+  }
+
+  return { served: order.map((u) => best.get(u)!), alsoRan };
+}
+
+/**
  * Match one listing. Returns how many clients were served.
  *
  * Clients below their own `min_score` are dropped before the cut, so relevance
@@ -76,9 +117,6 @@ export async function matchListing(listingId: string, now = new Date()): Promise
     return 0;
   }
 
-  const { data: cfg } = await client.from('settings').select('*').eq('id', 1).single();
-  const perListing: number = cfg?.applications_per_listing ?? 1;
-
   const { data: searchRows } = await client
     .from('searches').select('*').in('id', candidates.map((c) => c.search_id));
   const searches = new Map((searchRows ?? []).map((s) => [s.id as string, s]));
@@ -102,10 +140,12 @@ export async function matchListing(listingId: string, now = new Date()): Promise
     scored.push({ c: candidate, score: result.score, breakdown: result.breakdown });
   }
 
-  // `eligible_clients` already returned them in priority order; keep it. The
-  // cut is by priority, not by score - that is what makes the rotation fair.
-  const served = scored.slice(0, perListing);
-  const unserved = scored.slice(perListing);
+  // Every remaining client is recorded as a candidate, in priority order, and
+  // nobody is cut here. The per-listing cap is spent at queue time instead -
+  // see 0012. The scarce thing is an application, not a match row, and cutting
+  // against a send that has not happened is what burned 61 runners-up for
+  // applications that were never made.
+  const { served, alsoRan } = collapsePerClient(scored);
 
   for (const s of served) {
     const { data: match } = await client
@@ -113,7 +153,12 @@ export async function matchListing(listingId: string, now = new Date()): Promise
       .upsert({
         search_id: s.c.search_id, user_id: s.c.user_id, listing_id: listingId,
         score: s.score, score_breakdown: s.breakdown as Record<string, unknown>,
-        status: 'new',
+        // Cleared explicitly. An upsert that sets `status` and leaves
+        // `skipped_reason` alone turns a previously-skipped row into a `new`
+        // one still carrying "somebody else was served" - seven rows in the
+        // live table were in exactly that state, left over from the era before
+        // 0006 when the same listing could be matched twice.
+        status: 'new', skipped_reason: null,
       }, { onConflict: 'search_id,listing_id' })
       .select('id').single();
 
@@ -124,17 +169,15 @@ export async function matchListing(listingId: string, now = new Date()): Promise
     });
   }
 
-  // The ones who fit but were not served this time. Recorded as skipped rather
-  // than dropped, so "why did I not get that flat?" has an answer, and so the
-  // rotation is auditable instead of merely asserted.
-  if (cfg?.notify_unserved_matches) {
-    for (const s of unserved) {
-      await client.from('matches').upsert({
-        search_id: s.c.search_id, user_id: s.c.user_id, listing_id: listingId,
-        score: s.score, score_breakdown: s.breakdown as Record<string, unknown>,
-        status: 'skipped', skipped_reason: 'served_higher_priority_client',
-      }, { onConflict: 'search_id,listing_id' });
-    }
+  // A client's own second search, recorded rather than dropped: "why is this
+  // flat listed twice?" has an answer, and the row keeps the score that search
+  // would have given it.
+  for (const s of alsoRan) {
+    await client.from('matches').upsert({
+      search_id: s.c.search_id, user_id: s.c.user_id, listing_id: listingId,
+      score: s.score, score_breakdown: s.breakdown as Record<string, unknown>,
+      status: 'skipped', skipped_reason: 'duplicate_of_your_other_search',
+    }, { onConflict: 'search_id,listing_id' });
   }
 
   await markConsidered();

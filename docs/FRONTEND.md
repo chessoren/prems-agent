@@ -105,8 +105,23 @@ n'est pas un bug à contourner : le catalogue est l'actif du produit.
 
 Quand `status = 'skipped'`, `skipped_reason` dit pourquoi, et c'est une réponse
 à afficher plutôt qu'à cacher :
-`served_higher_priority_client`, `daily_cap`, `too_many_active`,
-`agency_cooldown`.
+
+| `skipped_reason` | Ce qui s'est passé |
+|---|---|
+| `served_higher_priority_client` | un autre client a été servi — écrit **après** l'envoi, jamais avant |
+| `duplicate_of_your_other_search` | deux de vos recherches trouvaient le même bien ; la mieux notée l'a gardé |
+| `daily_cap` | plafond quotidien du client atteint |
+| `too_many_active` | trop de candidatures déjà ouvertes |
+| `agency_cooldown` | 2 candidatures max chez la même agence sur 7 jours |
+
+`duplicate_of_your_other_search` n'est pas un échec et ne doit pas être
+présenté comme tel : le client a bien eu l'appartement, par son autre
+recherche. Le bien apparaît une fois, pas deux.
+
+`served_higher_priority_client` est désormais une affirmation vérifiable : elle
+n'est écrite qu'une fois qu'une candidature est réellement partie pour ce
+logement. Tant que personne n'a été servi, le match reste `new` et reste
+éligible.
 
 ### Pourquoi cette annonce ?
 
@@ -186,9 +201,9 @@ Champs : `budget_min_eur`, `budget_max_eur`, `surface_min_m2`, `surface_max_m2`,
 `zones` accepte un code postal (`75011`) ou un département sur deux caractères
 (`75`).
 
-> **Attention** : modifier `free_text` ne suffit pas. Son embedding
-> (`free_text_embedding`) est calculé côté worker et n'existe pas encore pour
-> les critères saisis depuis le front — à brancher dans `prems-enrich`.
+`free_text` est vectorisé automatiquement : `prems-enrich` repère un texte dont
+l'empreinte a changé et recalcule `free_text_embedding` dans les cinq minutes.
+Le front n'a rien à faire — et surtout rien à calculer.
 
 ---
 

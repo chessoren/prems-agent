@@ -97,8 +97,31 @@ même image sert tout le monde.
 | `prems-match` | `MODE=match` | `* * * * *` | matching + équité |
 | `prems-apply` | `MODE=apply` | `*/2 * * * *` | candidatures par e-mail |
 | `prems-inbox` | `MODE=inbox` | `0 8 * * *` | lecture des réponses, agenda |
+| `prems-agencies` | `MODE=agencies` | `*/15 * * * *` | résolution des adresses d'agence |
 
 Secrets montés : `supabase-service-role-key`, `composio-api-key`.
+
+Image courante : `prems-scraper:v10`, les six jobs sur la même.
+
+**Construire l'image derrière le proxy de développement.** Le proxy sortant
+présente son propre certificat, donc `npm ci` échoue dans le conteneur avec
+`SELF_SIGNED_CERT_IN_CHAIN`. On ne désactive pas la vérification TLS et on
+n'embarque pas ce certificat dans l'image de production — un secret BuildKit
+le monte le temps du build, sans laisser de couche :
+
+```bash
+sed -e 's|^RUN npm ci$|RUN --mount=type=secret,id=cacert NODE_EXTRA_CA_CERTS=/run/secrets/cacert npm ci|' \
+    workers/Dockerfile > /tmp/Dockerfile.proxy   # idem pour la ligne --omit=dev
+DOCKER_BUILDKIT=1 docker build -f /tmp/Dockerfile.proxy \
+  --secret id=cacert,src=/root/.ccr/ca-bundle.crt -t prems-scraper:local .
+```
+
+Vérifier le binaire avant de pousser — un `tsc -b` peut réussir sans rien
+émettre :
+
+```bash
+docker run --rm --entrypoint sh prems-scraper:local -c "ls workers/dist/index.js"
+```
 
 **Lire un état de planificateur.** `status: {"code":-1}` signifie **« jamais
 tenté »**, pas une erreur — je m'y suis laissé prendre. Un `status: {}` après un
@@ -210,6 +233,46 @@ select * from public.contactability;  -- % d'annonces avec e-mail agence, par so
 select * from public.source_health;   -- silence, production nulle, source injoignable
 select * from public.events where type = 'source.alert' order by id desc limit 5;
 ```
+
+### Alertes : une par source **et par condition**
+
+`raise_health_alerts()` émet au plus une alerte par heure et par condition
+(`is_stale`, `produced_nothing_24h`, `unreachable_but_enabled`). La clé inclut
+la condition, et pas seulement la source : autrement une condition permanente
+occupe le créneau horaire et retarde d'une heure l'alarme d'un vrai silence.
+
+Ce qu'on choisit délibérément de ne pas entendre est une donnée, pas du code :
+
+```sql
+select slug, muted_alerts from public.sources;
+
+-- réentendre une alarme
+update public.sources set muted_alerts = '{}' where slug = 'bienici';
+```
+
+`bienici` a `unreachable_but_enabled` en sourdine : la source est en lecture
+seule par décision, pas par accident, et l'alarme sonnait 22 fois par jour sur
+un fait connu. Elle se réactivera d'elle-même le jour où `contact_channel`
+changera — la condition disparaît avec.
+
+### Le plafond par annonce s'applique à l'envoi, pas au match
+
+`applications_per_listing` est dépensé dans `matches_ready_to_send()`, au
+moment où une candidature est créée. Un match reste `new` — donc encore
+éligible — tant que personne n'a réellement été servi pour ce logement.
+`close_lost_matches()`, appelée par `prems-apply` après l'envoi, écrit alors
+`served_higher_priority_client`, qui devient une affirmation vraie.
+
+Vérifier qu'aucun client ne peut candidater deux fois pour le même bien :
+
+```sql
+select user_id, listing_id, count(*)
+from public.applications where not dead_letter
+group by 1, 2 having count(*) > 1;   -- doit toujours être vide
+```
+
+L'index unique partiel `applications_one_per_client_listing` le garantit ;
+la requête sert à constater qu'il est toujours là.
 
 `funnel.contactable` est le chiffre à surveiller : détecter une annonce sans
 pouvoir y candidater ne sert à rien.
