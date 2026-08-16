@@ -161,6 +161,23 @@ npm run shots:onboarding  # rejoue les 13 écrans dans Chromium, 2 breakpoints
 Architecture et décisions : [`docs/ONBOARDING.md`](docs/ONBOARDING.md).
 Ce qu'il reste à brancher : [`docs/CLOUD-RUN.md`](docs/CLOUD-RUN.md).
 
+## L'espace client
+
+Le parcours ne s'arrête plus sur « c'est fini » : il se termine sur un écran de
+tarifs — l'offre standard telle quelle depuis la landing page, et en grand à la
+place des deux offres supérieures, l'offre fondateur à 100 € valable jusqu'à la
+signature du bail. Le paiement passe par des liens Stripe en production.
+
+`/app` est ce qui vient après : quatre onglets — les matchs en temps réel avec
+leur cycle de vie, les visites, les conversations avec les agences, le dossier
+locatif — construits sur le même design system, sans framework.
+
+```bash
+npm run shots:app     # 14 états rejoués dans Chromium, 2 breakpoints
+```
+
+Architecture, ce qui est branché et ce qui est projeté : [`docs/APP.md`](docs/APP.md).
+
 ## Régénérer après une modif dans Framer
 
 ```bash

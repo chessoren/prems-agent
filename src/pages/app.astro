@@ -1,0 +1,45 @@
+---
+import Base from '../layouts/Base.astro';
+
+// The same explicit cascade as every other page. `onboarding.css` is loaded
+// before `app.css` on purpose and is not a leftover: it *is* the design system.
+// The pills, the option cards, the fields, the five-layer shadow and the
+// spinner all live there, and the app extends that vocabulary rather than
+// forking it - someone arriving here straight from the last onboarding screen
+// should not be able to tell where one ended and the other began.
+const styles = [
+  '/styles/fonts.css',
+  '/styles/tokens.css',
+  '/styles/onboarding.css',
+  '/styles/app.css',
+];
+
+const meta = {
+  title: 'Mon espace | Prems',
+  description:
+    'Tes matchs en temps réel, tes visites, tes conversations avec les agences et ton dossier locatif — au même endroit.',
+  ogTitle: 'Mon espace | Prems',
+  ogDescription: 'Ton agent travaille. Voilà ce qu’il a trouvé.',
+  lang: 'fr',
+};
+---
+
+<Base meta={meta} styles={styles}>
+  <div class="ob pm" id="app">
+    <noscript>
+      <div style="max-width:560px;margin:0 auto;padding:64px 20px;text-align:center">
+        <h1 style="font-family:'Inter Tight',sans-serif;font-size:32px;letter-spacing:-0.02em">
+          Active JavaScript pour continuer
+        </h1>
+        <p style="color:#4d4d4d;line-height:1.55;margin-top:12px">
+          Ton espace Prems se met à jour en temps réel et a besoin de JavaScript.
+          Tu peux aussi nous écrire depuis la <a href="/contact">page contact</a>.
+        </p>
+      </div>
+    </noscript>
+  </div>
+
+  <script>
+    import '../scripts/app/index.js';
+  </script>
+</Base>
