@@ -19,6 +19,7 @@
  */
 import * as agent from '../../lib/prems/agent.js';
 import * as store from '../../lib/prems/store.js';
+import * as billing from '../../lib/prems/billing.js';
 import { ensureSession } from '../../lib/prems/supabase.js';
 import { h, appIcon, countBadge, toast } from './ui.js';
 import renderMatches from './matches.js';
@@ -191,29 +192,45 @@ agent.subscribe(() => update({ force: true }));
 /**
  * Coming back from Stripe.
  *
- * The payment link redirects here with the plan it sold. Recording it locally
- * is enough for the UI to stop asking; the authoritative answer will come from
- * the checkout webhook once there is somewhere to put it, and the subscription
- * section says as much rather than claiming more than it knows.
+ * The parameter is a hint that a payment just happened, and nothing more. It
+ * used to *grant* the plan - `?checkout=fondateur` wrote the founder offer
+ * straight into localStorage, which handed the 100 € tier to anyone who typed
+ * the URL and lost it for the person who actually paid as soon as they cleared
+ * their browser.
+ *
+ * The grant now belongs to the Stripe webhook, which is the only party that
+ * can prove a payment. All this does is wait for that row to appear.
  */
-function readCheckout() {
+async function readCheckout() {
   const params = new URLSearchParams(location.search);
   const plan = params.get('checkout');
   if (!plan) return;
 
-  agent.set({ plan, planSince: new Date().toISOString() });
   params.delete('checkout');
   const query = params.toString();
   history.replaceState(null, '', `${location.pathname}${query ? `?${query}` : ''}${location.hash}`);
 
+  toast('Paiement reçu, activation en cours…');
+
+  // The webhook usually lands within a second, but it is a different network
+  // path from the redirect and it can arrive second. Poll briefly rather than
+  // claim an outcome we have not seen.
+  const confirmed = await billing.waitForActivation({ timeoutMs: 15000 });
+
   toast(
-    plan === 'fondateur'
+    confirmed?.plan === 'fondateur'
       ? 'Bienvenue chez les fondateurs. Ton accès est actif jusqu’à la signature de ton bail.'
-      : 'Paiement reçu. Ton agent est actif.',
+      : confirmed
+        ? 'Abonnement actif. Ton agent est en route.'
+        : 'Paiement enregistré. L’activation peut prendre une minute — recharge si besoin.',
   );
+
+  update({ force: true });
 }
 
 async function boot() {
+  // The account id has to be in hand before any checkout link is rendered.
+  await billing.warm();
   readCheckout();
 
   const hash = location.hash.slice(1);

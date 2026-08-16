@@ -117,6 +117,13 @@ export async function matchListing(listingId: string, now = new Date()): Promise
     return 0;
   }
 
+  const { data: cfg } = await client
+    .from('settings')
+    .select('display_min_score')
+    .eq('id', 1)
+    .single();
+  const displayMin = Number(cfg?.display_min_score ?? 0.35);
+
   const { data: searchRows } = await client
     .from('searches').select('*').in('id', candidates.map((c) => c.search_id));
   const searches = new Map((searchRows ?? []).map((s) => [s.id as string, s]));
@@ -136,7 +143,20 @@ export async function matchListing(listingId: string, now = new Date()): Promise
       now,
       semanticScore: typeof semantic === 'number' ? semantic : null,
     });
-    if (result.score < criteria.minScore) continue;
+
+    // The display threshold, not the application one.
+    //
+    // `criteria.minScore` decides whether a flat is worth spending one of this
+    // person's applications on, and it was being used here to decide whether
+    // they get to see it at all. Freshness is 27% of the score with a 90-minute
+    // half-life, so a two-day-old listing loses that entire share: the same
+    // Paris T4 scores 0.823 when five minutes old and 0.518 after two days.
+    // Gating the display at 0.55 therefore hid the whole back catalogue and
+    // left a new client staring at an empty screen.
+    //
+    // Shown generously, applied for strictly - the strict test now lives in
+    // `matches_ready_to_send`, where the application is actually spent.
+    if (result.score < displayMin) continue;
     scored.push({ c: candidate, score: result.score, breakdown: result.breakdown });
   }
 

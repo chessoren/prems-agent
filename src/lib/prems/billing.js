@@ -18,6 +18,8 @@
  * same UI at its own account without touching this file.
  */
 
+import { client, ensureSession } from './supabase.js';
+
 const env = (name, fallback) => import.meta.env?.[name] || fallback;
 
 /**
@@ -133,7 +135,101 @@ export function checkoutUrl(planId, { reference, email } = {}) {
   if (!plan?.url) return null;
 
   const url = new URL(plan.url);
-  if (reference) url.searchParams.set('client_reference_id', reference);
+  const ref = reference || cachedUid;
+  if (ref) url.searchParams.set('client_reference_id', ref);
   if (email) url.searchParams.set('prefilled_email', email);
   return url.toString();
+}
+
+/**
+ * The account uuid, which is what the webhook needs to attach a payment.
+ *
+ * A phone number was used here before. It works only if the person types the
+ * same number at checkout as the one they gave us, and it is not what the
+ * webhook looks at first. The account id always exists - the flow creates an
+ * anonymous session on screen 5 - and it is exact.
+ *
+ * Cached in the module because the links are rendered as plain `href`s, built
+ * synchronously. `warm()` is called at boot, long before anyone can click.
+ */
+let cachedUid = null;
+
+export async function warm() {
+  try {
+    const session = await ensureSession();
+    cachedUid = session?.user?.id ?? null;
+  } catch {
+    cachedUid = null;
+  }
+  return cachedUid;
+}
+
+export const reference = () => cachedUid;
+
+/**
+ * Send someone to Checkout, resolving their account id first.
+ *
+ * The links are rendered as ordinary `href`s so that middle-click, "open in
+ * new tab" and a JavaScript failure all still reach Stripe. This handler
+ * exists for the normal click, where we can afford the round trip that
+ * guarantees `client_reference_id` is present - without it the webhook has to
+ * fall back to matching on an email the person may type differently, and an
+ * unattached payment is the worst outcome in this whole flow.
+ */
+export async function startCheckout(planId, event, { email } = {}) {
+  if (event) event.preventDefault();
+  await warm();
+  const url = checkoutUrl(planId, { email });
+  if (url) location.href = url;
+}
+
+/**
+ * What this person is entitled to, according to the database.
+ *
+ * Never according to the browser: the whole point of moving the grant to the
+ * webhook is that the party being governed cannot write the answer. Returns
+ * `{ plan, status, isActive, currentPeriodEnd }`, or an inactive shape when
+ * there is no session or the query fails - a billing lookup must not be able
+ * to break the app.
+ */
+export async function current() {
+  const inactive = { plan: null, status: null, isActive: false, currentPeriodEnd: null };
+  const supabase = client();
+  if (!supabase) return inactive;
+
+  try {
+    await ensureSession();
+    const { data, error } = await supabase
+      .from('my_subscription')
+      .select('plan, status, is_active, current_period_end')
+      .maybeSingle();
+
+    if (error || !data) return inactive;
+    return {
+      plan: data.plan ?? null,
+      status: data.status ?? null,
+      isActive: Boolean(data.is_active),
+      currentPeriodEnd: data.current_period_end ?? null,
+    };
+  } catch {
+    return inactive;
+  }
+}
+
+/**
+ * Wait for the webhook to land, after a return from Checkout.
+ *
+ * The redirect and the webhook are two independent network paths and there is
+ * no ordering between them. Polling for a few seconds is honest; announcing
+ * "your agent is active" on the strength of a query parameter is what we just
+ * removed.
+ */
+export async function waitForActivation({ timeoutMs = 15000, intervalMs = 1500 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const subscription = await current();
+    if (subscription.isActive) return subscription;
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  return null;
 }

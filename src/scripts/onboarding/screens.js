@@ -17,7 +17,7 @@ import * as inventory from '../../lib/prems/listings.js';
 import { upload, humanSize, validate } from '../../lib/prems/documents.js';
 import { client, ensureSession, isConfigured } from '../../lib/prems/supabase.js';
 import { scan as runScan, isAvailable as ocrAvailable } from '../../lib/prems/ocr.js';
-import { PLANS, checkoutUrl } from '../../lib/prems/billing.js';
+import { PLANS, checkoutUrl, startCheckout } from '../../lib/prems/billing.js';
 import { track } from '../../lib/prems/analytics.js';
 import {
   h,
@@ -1450,13 +1450,15 @@ function planCard(plan, { hero = false } = {}) {
       {
         class: `ob-btn${hero ? ' ob-btn--accent' : ' ob-btn--light'} ob-plan__cta`,
         href:
-          checkoutUrl(plan.id, {
-            // Ties the payment back to the account that made it: Stripe echoes
-            // this on the session and the webhook, so the plan lands on the
-            // right user without asking anyone to retype an email.
-            reference: draft.phone || undefined,
-          }) || '/contact',
-        onClick: () => track('pricing', 'complete'),
+          // Ties the payment back to the account that made it: Stripe echoes
+          // client_reference_id on the session and on the webhook, so the plan
+          // lands on the right user without anyone retyping an email. The
+          // account id is carried by the billing module - see warm().
+          checkoutUrl(plan.id) || '/contact',
+        onClick: (event) => {
+          track('pricing', 'complete');
+          startCheckout(plan.id, event);
+        },
       },
       h('span', { class: 'ob-btn__inner' }, plan.cta),
     ),

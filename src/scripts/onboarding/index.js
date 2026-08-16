@@ -11,6 +11,7 @@
  */
 import { SCREENS, ORDER } from './screens.js';
 import * as store from '../../lib/prems/store.js';
+import * as billing from '../../lib/prems/billing.js';
 import { ensureSession } from '../../lib/prems/supabase.js';
 import { track } from '../../lib/prems/analytics.js';
 import { h, ICONS, button, setLoading } from './ui.js';
@@ -270,6 +271,7 @@ function initialScreen() {
     // have nothing to attach to. Not awaited, for the same reason as screen 5.
     ensureSession()
       .then(() => store.sync())
+      .then(() => billing.warm())
       .catch(() => {});
 
     return next;

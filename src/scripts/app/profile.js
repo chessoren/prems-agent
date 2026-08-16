@@ -13,7 +13,7 @@
  */
 import * as store from '../../lib/prems/store.js';
 import * as agent from '../../lib/prems/agent.js';
-import { PLANS, portalUrl, checkoutUrl } from '../../lib/prems/billing.js';
+import { PLANS, portalUrl, checkoutUrl, startCheckout } from '../../lib/prems/billing.js';
 import {
   h,
   appIcon,
@@ -408,7 +408,8 @@ function subscriptionSection() {
         'a',
         {
           class: 'ob-btn ob-btn--accent',
-          href: checkoutUrl('fondateur', { reference: draft.phone || undefined }) || '/pricing',
+          href: checkoutUrl('fondateur') || '/pricing',
+          onClick: (event) => startCheckout('fondateur', event),
         },
         h('span', { class: 'ob-btn__inner' }, 'Offre fondateur — 100 € à vie'),
       ),
@@ -416,7 +417,8 @@ function subscriptionSection() {
         'a',
         {
           class: 'ob-btn ob-btn--light',
-          href: checkoutUrl('soldat', { reference: draft.phone || undefined }) || '/pricing',
+          href: checkoutUrl('soldat') || '/pricing',
+          onClick: (event) => startCheckout('soldat', event),
         },
         h('span', { class: 'ob-btn__inner' }, 'Le Soldat — 29 € / semaine'),
       ),
