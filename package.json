@@ -17,6 +17,7 @@
     "db:provision": "NODE_USE_ENV_PROXY=1 node tools/supabase/provision.mjs",
     "db:seed": "NODE_USE_ENV_PROXY=1 node tools/supabase/seed-listings.mjs",
     "shots:onboarding": "NODE_USE_ENV_PROXY=1 node tools/onboarding-shots.mjs",
+    "shots:app": "NODE_USE_ENV_PROXY=1 node tools/app-shots.mjs",
     "ctas:retarget": "node tools/retarget-ctas.mjs",
     "og:image": "NODE_USE_ENV_PROXY=1 node tools/make-og-image.mjs"
   },

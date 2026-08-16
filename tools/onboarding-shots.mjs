@@ -36,9 +36,20 @@ for (const viewport of VIEWPORTS) {
 
   const errors = [];
   page.on('console', (msg) => {
-    if (msg.type() === 'error') errors.push(msg.text());
+    // "Failed to load resource" carries no URL, so it is counted from the
+    // response listener below instead - otherwise a missing favicon and a
+    // missing stylesheet produce the same unactionable line, and the run fails
+    // on the one that does not matter.
+    if (msg.type() === 'error' && !/Failed to load resource/.test(msg.text())) {
+      errors.push(msg.text());
+    }
   });
   page.on('pageerror', (err) => errors.push(String(err)));
+  page.on('response', (res) => {
+    if (res.status() >= 400 && !/favicon/.test(res.url())) {
+      errors.push(`${res.status()} ${res.url()}`);
+    }
+  });
 
   const shot = async (name) => {
     await page.waitForTimeout(650);
@@ -132,9 +143,14 @@ for (const viewport of VIEWPORTS) {
   await shot('11-address');
   await page.click('.ob__footer .ob-btn');
 
-  // final
+  // celebration
   await page.waitForSelector('.ob-done__seal', { timeout: 15000 });
   await shot('12-done');
+  await page.click('.ob__footer .ob-btn');
+
+  // pricing - the screen the flow now ends on
+  await page.waitForSelector('.ob-plan--hero', { timeout: 15000 });
+  await shot('13-pricing');
 
   const real = errors.filter((e) => !/favicon|net::ERR_/i.test(e));
   console.log(`${viewport.name}: parcours complet — ${real.length} erreur(s) console`);

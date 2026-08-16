@@ -1588,6 +1588,164 @@ body.ob-body {
   flex: none;
 }
 
+/* --------------------------------------------------------------------------
+ * Pricing (final screen)
+ *
+ * Two cards, deliberately unequal. The standard plan is the baseline someone
+ * already saw on the landing page and is drawn at its landing-page weight; the
+ * founder offer occupies the room the two upper tiers used to take, because it
+ * is the one decision this screen is asking for.
+ *
+ * The asymmetry is the whole design. Two cards of equal size read as a
+ * comparison to work through, which is the wrong task ten seconds after a
+ * completed dossier.
+ * -------------------------------------------------------------------------- */
+.ob-pricing {
+  text-align: left;
+}
+
+.ob-plans {
+  display: grid;
+  gap: 16px;
+  margin-top: 26px;
+  align-items: start;
+}
+
+.ob-plan {
+  display: flex;
+  flex-direction: column;
+  padding: 22px 20px 20px;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--ob-radius-card);
+  background: var(--color-white);
+  box-shadow: var(--ob-shadow-card);
+  animation: ob-pop 460ms var(--ob-ease-out) both;
+}
+
+/* The accent is spent here and nowhere else on the screen: one coloured object
+ * is a recommendation, two are decoration. */
+.ob-plan--hero {
+  border-color: var(--color-accent);
+  border-width: 2px;
+  background:
+    radial-gradient(120% 100% at 100% 0%, rgba(255, 122, 0, 0.09), transparent 62%),
+    var(--color-white);
+  box-shadow:
+    0px 2px 6px rgba(255, 122, 0, 0.08), 0px 18px 44px rgba(255, 122, 0, 0.14),
+    0px 1px 2px rgba(26, 26, 26, 0.05);
+  animation-delay: 90ms;
+}
+
+.ob-plan__flag {
+  align-self: flex-start;
+  margin-bottom: 14px;
+  padding: 6px 12px;
+  border-radius: var(--ob-radius-pill);
+  background: var(--color-accent);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--color-white);
+}
+
+.ob-plan__name {
+  margin: 0;
+  font-family: "Inter Tight", "Inter Tight Placeholder", sans-serif;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--color-ink);
+}
+
+.ob-plan__price {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.ob-plan__amount {
+  font-family: "Inter Tight", "Inter Tight Placeholder", sans-serif;
+  font-size: 40px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.ob-plan--hero .ob-plan__amount {
+  font-size: 56px;
+  color: var(--color-accent);
+}
+
+.ob-plan__period {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-gray-500);
+}
+
+.ob-plan__tagline {
+  margin-top: 10px;
+  font-size: 14.5px;
+  line-height: 148%;
+  color: var(--color-ink-muted);
+  text-wrap: pretty;
+}
+
+.ob-plan__list {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0 22px;
+  padding: 18px 0 0;
+  border-top: 1px solid var(--color-gray-100);
+}
+
+.ob-plan__list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14.5px;
+  line-height: 142%;
+  color: var(--color-ink);
+}
+
+.ob-plan__tick {
+  flex: none;
+  display: inline-flex;
+  width: 17px;
+  height: 17px;
+  margin-top: 1px;
+  color: var(--color-accent);
+}
+
+.ob-plan__tick svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Pushed to the bottom so two cards of different lengths still line their
+ * buttons up when they sit side by side. */
+.ob-plan__cta {
+  margin-top: auto;
+}
+
+.ob-plan__note {
+  margin-top: 12px;
+  font-size: 12.5px;
+  line-height: 145%;
+  color: var(--color-gray-500);
+  text-align: center;
+}
+
+.ob-pricing__trust {
+  margin-top: 22px;
+  font-size: 13px;
+  color: var(--color-gray-500);
+  text-align: center;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ob *,
   .ob-hook * {
@@ -1740,6 +1898,52 @@ body.ob-body {
     font-size: clamp(76px, 7vw, 104px);
   }
 
+  /* Same reasoning as the results grid: the offers want width. The columns are
+   * deliberately unequal - the founder card takes the room the two upper tiers
+   * used to occupy, which is what makes it read as the answer rather than as
+   * one of two options. */
+  .ob[data-screen="pricing"] {
+    --ob-shell-max: 900px;
+  }
+
+  .ob[data-screen="pricing"] .ob__title,
+  .ob[data-screen="pricing"] .ob__subtitle,
+  .ob[data-screen="pricing"] .ob__eyebrow {
+    margin-inline: auto;
+    text-align: center;
+  }
+
+  .ob[data-screen="pricing"] .ob-pricing {
+    text-align: center;
+  }
+
+  .ob-plans {
+    grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.4fr);
+    gap: 22px;
+    margin-top: 34px;
+    text-align: left;
+  }
+
+  .ob-plan {
+    padding: 26px 24px 24px;
+    height: 100%;
+  }
+
+  .ob-plan--hero {
+    padding: 30px 30px 26px;
+  }
+
+  .ob-plan--hero .ob-plan__amount {
+    font-size: 68px;
+  }
+
+  /* The pills inside the cards are already at a pointer-friendly width; the
+   * generic desktop rule that centres a 400px button would leave them floating
+   * away from the text they belong to. */
+  .ob-plan .ob-btn {
+    max-width: none;
+  }
+
   /* The hook is a landing moment, not a question: it gets the full canvas. */
   .ob-hook__content {
     max-width: 620px;
@@ -1784,6 +1988,10 @@ body.ob-body {
 
   .ob[data-screen="aha"] .ob-grid {
     gap: 24px;
+  }
+
+  .ob[data-screen="pricing"] {
+    --ob-shell-max: 980px;
   }
 
   .ob-hook__title {
