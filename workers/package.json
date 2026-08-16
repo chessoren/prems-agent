@@ -1,0 +1,11 @@
+{
+  "name": "@prems/workers",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b",
+    "scrape": "node --env-file=../.env dist/index.js"
+  },
+  "dependencies": { "@supabase/supabase-js": "^2.112.2" }
+}

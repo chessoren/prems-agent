@@ -1,0 +1,540 @@
+{
+ "realEstateAds": [
+  {
+   "id": "ladresse-1-adresse-14566955",
+   "city": "Suresnes",
+   "floor": 2,
+   "price": 2200,
+   "title": "Appartement Suresnes 3 pièce(s) 81 m2/Meublée/ Parking",
+   "adType": "rent",
+   "isCalm": true,
+   "photos": [
+    {
+     "url": "https://file.bienici.com/photo/ladresse-1-adresse-14566955_media.immo-facile.com_office21_ladres_2504230943_catalog_images_pr_p_1_4_5_6_6_9_5_5_14566955a.jpg_DATEMAJ_13_08_2026-12_23_26",
+     "photo": "ladresse-1-adresse-14566955_media.immo-facile.com_office21_ladres_2504230943_catalog_images_pr_p_1_4_5_6_6_9_5_5_14566955a.jpg_DATEMAJ_13_08_2026-12_23_26",
+     "title": "Photo n°1",
+     "url_photo": "https://media.immo-facile.com/office21/ladres_2504230943/catalog/images/pr_p/1/4/5/6/6/9/5/5/14566955a.jpg?DATEMAJ=13/08/2026-12:23:26"
+    },
+    {
+     "url": "https://file.bienici.com/photo/ladresse-1-adresse-14566955_media.immo-facile.com_office21_ladres_2504230943_catalog_images_pr_p_1_4_5_6_6_9_5_5_14566955b.jpg_DATEMAJ_13_08_2026-12_23_26",
+     "photo": "ladresse-1-adresse-14566955_media.immo-facile.com_office21_ladres_2504230943_catalog_images_pr_p_1_4_5_6_6_9_5_5_14566955b.jpg_DATEMAJ_13_08_2026-12_23_26",
+     "title": "Photo n°2",
+     "url_photo": "https://media.immo-facile.com/office21/ladres_2504230943/catalog/images/pr_p/1/4/5/6/6/9/5/5/14566955b.jpg?DATEMAJ=13/08/2026-12:23:26"
+    },
+    {
+     "url": "https://file.bienici.com/photo/ladresse-1-adresse-14566955_media.immo-facile.com_office21_ladres_2504230943_catalog_images_pr_p_1_4_5_6_6_9_5_5_14566955c.jpg_DATEMAJ_13_08_2026-12_23_27",
+     "photo": "ladresse-1-adresse-14566955_media.immo-facile.com_office21_ladres_2504230943_catalog_images_pr_p_1_4_5_6_6_9_5_5_14566955c.jpg_DATEMAJ_13_08_2026-12_23_27",
+     "title": "Photo n°3",
+     "url_photo": "https://media.immo-facile.com/office21/ladres_2504230943/catalog/images/pr_p/1/4/5/6/6/9/5/5/14566955c.jpg?DATEMAJ=13/08/2026-12:23:27"
+    },
+    {
+     "url": "https://file.bienici.com/photo/ladresse-1-adresse-14566955_media.immo-facile.com_office21_ladres_2504230943_catalog_images_pr_p_1_4_5_6_6_9_5_5_14566955d.jpg_DATEMAJ_13_08_2026-12_23_27",
+     "photo": "ladresse-1-adresse-14566955_media.immo-facile.com_office21_ladres_2504230943_catalog_images_pr_p_1_4_5_6_6_9_5_5_14566955d.jpg_DATEMAJ_13_08_2026-12_23_27",
+     "title": "Photo n°4",
+     "url_photo": "https://media.immo-facile.com/office21/ladres_2504230943/catalog/images/pr_p/1/4/5/6/6/9/5/5/14566955d.jpg?DATEMAJ=13/08/2026-12:23:27"
+    },
+    {
+     "url": "https://file.bienici.com/photo/ladresse-1-adresse-14566955_media.immo-facile.com_office21_ladres_2504230943_catalog_images_pr_p_1_4_5_6_6_9_5_5_14566955e.jpg_DATEMAJ_13_08_2026-12_23_27",
+     "photo": "ladresse-1-adresse-14566955_media.immo-facile.com_office21_ladres_2504230943_catalog_images_pr_p_1_4_5_6_6_9_5_5_14566955e.jpg_DATEMAJ_13_08_2026-12_23_27",
+     "title": "Photo n°5",
+     "url_photo": "https://media.immo-facile.com/office21/ladres_2504230943/catalog/images/pr_p/1/4/5/6/6/9/5/5/14566955e.jpg?DATEMAJ=13/08/2026-12:23:27"
+    },
+    {
+     "url": "https://file.bienici.com/photo/ladresse-1-adresse-14566955_media.immo-facile.com_office21_ladres_2504230943_catalog_images_pr_p_1_4_5_6_6_9_5_5_14566955f.jpg_DATEMAJ_13_08_2026-12_23_27",
+     "photo": "ladresse-1-adresse-14566955_media.immo-facile.com_office21_ladres_2504230943_catalog_images_pr_p_1_4_5_6_6_9_5_5_14566955f.jpg_DATEMAJ_13_08_2026-12_23_27",
+     "title": "Photo n°6",
+     "url_photo": "https://media.immo-facile.com/office21/ladres_2504230943/catalog/images/pr_p/1/4/5/6/6/9/5/5/14566955f.jpg?DATEMAJ=13/08/2026-12:23:27"
+    },
+    {
+     "url": "https://file.bienici.com/photo/ladresse-1-adresse-14566955_media.immo-facile.com_office21_ladres_2504230943_catalog_images_pr_p_1_4_5_6_6_9_5_5_14566955g.jpg_DATEMAJ_13_08_2026-12_23_28",
+     "photo": "ladresse-1-adresse-14566955_media.immo-facile.com_office21_ladres_2504230943_catalog_images_pr_p_1_4_5_6_6_9_5_5_14566955g.jpg_DATEMAJ_13_08_2026-12_23_28",
+     "title": "Photo n°7",
+     "url_photo": "https://media.immo-facile.com/office21/ladres_2504230943/catalog/images/pr_p/1/4/5/6/6/9/5/5/14566955g.jpg?DATEMAJ=13/08/2026-12:23:28"
+    },
+    {
+     "url": "https://file.bienici.com/photo/ladresse-1-adresse-14566955_media.immo-facile.com_office21_ladres_2504230943_catalog_images_pr_p_1_4_5_6_6_9_5_5_14566955h.jpg_DATEMAJ_13_08_2026-12_23_28",
+     "photo": "ladresse-1-adresse-14566955_media.immo-facile.com_office21_ladres_2504230943_catalog_images_pr_p_1_4_5_6_6_9_5_5_14566955h.jpg_DATEMAJ_13_08_2026-12_23_28",
+     "title": "Photo n°8",
+     "url_photo": "https://media.immo-facile.com/office21/ladres_2504230943/catalog/images/pr_p/1/4/5/6/6/9/5/5/14566955h.jpg?DATEMAJ=13/08/2026-12:23:28"
+    },
+    {
+     "url": "https://file.bienici.com/photo/ladresse-1-adresse-14566955_media.immo-facile.com_office21_ladres_2504230943_catalog_images_pr_p_1_4_5_6_6_9_5_5_14566955i.jpg_DATEMAJ_13_08_2026-12_23_28",
+     "photo": "ladresse-1-adresse-14566955_media.immo-facile.com_office21_ladres_2504230943_catalog_images_pr_p_1_4_5_6_6_9_5_5_14566955i.jpg_DATEMAJ_13_08_2026-12_23_28",
+     "title": "Photo n°9",
+     "url_photo": "https://media.immo-facile.com/office21/ladres_2504230943/catalog/images/pr_p/1/4/5/6/6/9/5/5/14566955i.jpg?DATEMAJ=13/08/2026-12:23:28"
+    },
+    {
+     "url": "https://file.bienici.com/photo/ladresse-1-adresse-14566955_media.immo-facile.com_office21_ladres_2504230943_catalog_images_pr_p_1_4_5_6_6_9_5_5_14566955j.jpg_DATEMAJ_13_08_2026-12_23_28",
+     "photo": "ladresse-1-adresse-14566955_media.immo-facile.com_office21_ladres_2504230943_catalog_images_pr_p_1_4_5_6_6_9_5_5_14566955j.jpg_DATEMAJ_13_08_2026-12_23_28",
+     "title": "Photo n°10",
+     "url_photo": "https://media.immo-facile.com/office21/ladres_2504230943/catalog/images/pr_p/1/4/5/6/6/9/5/5/14566955j.jpg?DATEMAJ=13/08/2026-12:23:28"
+    },
+    {
+     "url": "https://file.bienici.com/photo/ladresse-1-adresse-14566955_media.immo-facile.com_office21_ladres_2504230943_catalog_images_pr_p_1_4_5_6_6_9_5_5_14566955k.jpg_DATEMAJ_13_08_2026-12_23_28",
+     "photo": "ladresse-1-adresse-14566955_media.immo-facile.com_office21_ladres_2504230943_catalog_images_pr_p_1_4_5_6_6_9_5_5_14566955k.jpg_DATEMAJ_13_08_2026-12_23_28",
+     "title": "Photo n°11",
+     "url_photo": "https://media.immo-facile.com/office21/ladres_2504230943/catalog/images/pr_p/1/4/5/6/6/9/5/5/14566955k.jpg?DATEMAJ=13/08/2026-12:23:28"
+    },
+    {
+     "url": "https://file.bienici.com/photo/ladresse-1-adresse-14566955_media.immo-facile.com_office21_ladres_2504230943_catalog_images_pr_p_1_4_5_6_6_9_5_5_14566955l.jpg_DATEMAJ_13_08_2026-12_23_29",
+     "photo": "ladresse-1-adresse-14566955_media.immo-facile.com_office21_ladres_2504230943_catalog_images_pr_p_1_4_5_6_6_9_5_5_14566955l.jpg_DATEMAJ_13_08_2026-12_23_29",
+     "title": "Photo n°12",
+     "url_photo": "https://media.immo-facile.com/office21/ladres_2504230943/catalog/images/pr_p/1/4/5/6/6/9/5/5/14566955l.jpg?DATEMAJ=13/08/2026-12:23:29"
+    }
+   ],
+   "status": {
+    "isLeading": false,
+    "highlighted": false,
+    "onTheMarket": true,
+    "autoImported": true,
+    "closedByUser": false,
+    "is3dHighlighted": false
+   },
+   "charges": 180,
+   "heating": "radiateur électrique individuel",
+   "adTypeFR": "location",
+   "blurInfo": {
+    "bbox": [
+     2.2253400440121336,
+     48.86564090995589,
+     2.226705642053295,
+     48.86653922789211
+    ],
+    "type": "disk",
+    "radius": 50,
+    "centroid": {
+     "lat": 48.866090068924,
+     "lon": 2.2260228430327142
+    },
+    "position": {
+     "lat": 48.866090068924,
+     "lon": 2.2260228430327142
+    }
+   },
+   "district": {
+    "cp": "92150",
+    "id": 100362,
+    "name": "Suresnes - République",
+    "id_type": 1,
+    "libelle": "République",
+    "type_id": 1,
+    "code_insee": "92073",
+    "insee_code": "92073",
+    "id_polygone": 100362,
+    "postal_code": "92150"
+   },
+   "reference": "1575",
+   "rentExtra": 0,
+   "customerId": "44607",
+   "postalCode": "92150",
+   "accountType": "agency",
+   "description": "L'Adresse Immobilier a le plaisir de vous présenter ce bel appartement 3 pièces en location meublée.<br>Situé allée de Longchamp à Suresnes, au sein d'une copropriété calme et bien entretenue avec gardien, à proximité des transports et de tous les commerces.<br>L'appartement se compose d'une entrée desservant un séjour lumineux donnant accès à une terrasse, idéale pour profiter d'un espace extérieur, d'une cuisine entièrement équipée, de deux chambres confortables, d'une salle d'eau, d'un dressing, d'une buanderie ainsi que de WC séparés.<br>Une place de parking en sous-sol complète ce bien.<br>Loyer : 2 200 € charges comprises<br>Chauffage et eau chaude individuels électriques<br>Disponible à la fin du mois d'août 2026.<br>Nous serions ravis de vous le faire visiter.<br>Merci de bien vouloir effectuer votre demande via PLATO:",
+   "energyValue": 124,
+   "hasElevator": true,
+   "newProperty": false,
+   "surfaceArea": 81,
+   "with3dModel": false,
+   "addressKnown": true,
+   "agencyFeeUrl": "https://media.immo-facile.com/segments/immo/catalog/images/manufacturers_bareme/398359.pdf",
+   "hasFirePlace": false,
+   "propertyType": "flat",
+   "floorQuantity": 7,
+   "phoneDisplays": [],
+   "roomsQuantity": 3,
+   "safetyDeposit": 4040,
+   "adCreatedByPro": true,
+   "departmentCode": "92",
+   "agencyRentalFee": 1215,
+   "publicationDate": "2026-08-13T12:33:43.008Z",
+   "transactionType": "rent",
+   "bedroomsQuantity": 2,
+   "chargingStations": {
+    "providers": []
+   },
+   "modificationDate": "2026-08-13T12:33:43.008Z",
+   "userRelativeData": {
+    "isAdmin": false,
+    "accountIds": [
+     "ladresse-1-398359"
+    ],
+    "canSeeStats": false,
+    "isAdModifier": false,
+    "canSeeAddress": false,
+    "canOpenAdDetail": true,
+    "canSeeRealDates": false,
+    "importAccountId": "65845d3f598ce400b1c43aa8",
+    "canSetAsFeatured": false,
+    "searchAccountIds": [
+     "ladresse-1-398359",
+     "ladresse-1-network-Adresse",
+     "contract-type-agency-performance-package",
+     "65845d3f598ce400b1c43aa8"
+    ],
+    "canSeeExactPosition": false,
+    "canSeePublicationCertificatePdf": false,
+    "canSeePublicationCertificateHtml": false
+   },
+   "nothingBehindForm": false,
+   "priceHasDecreased": false,
+   "accountDisplayName": "l'Adresse Puteaux",
+   "greenhouseGazValue": 3,
+   "isBienIciExclusive": false,
+   "opticalFiberStatus": "deploye",
+   "yearOfConstruction": 1989,
+   "displayDistrictName": true,
+   "photoWatermarkAlias": "858ef074-25f0-4cad-8b56-584be9f5d9d9",
+   "pricePerSquareMeter": 27.160493827160494,
+   "energyClassification": "C",
+   "hasGeorisquesMention": true,
+   "highlightMailContact": false,
+   "descriptionTextLength": 814,
+   "isSubjectToRentControl": false,
+   "inventoryOfFixturesFees": 243,
+   "endOfPromotedAsExclusive": 0,
+   "displayInsuranceEstimation": true,
+   "postalCodeForSearchFilters": "92150",
+   "greenhouseGazClassification": "C",
+   "energyPerformanceDiagnosticDate": "2025-10-27",
+   "useJuly2021EnergyPerformanceDiagnostic": true
+  },
+  {
+   "id": "ag753199-544893785",
+   "city": "Paris 18e",
+   "price": 2200,
+   "title": "Appartement Montmartre",
+   "adType": "rent",
+   "photos": [
+    {
+     "url": "https://file.bienici.com/photo/ag753199-544893785_photos.ubiflow.net_753199_544893785_photos_1.jpg_INSOON_EB_5512801818_20260812091433",
+     "photo": "ag753199-544893785_photos.ubiflow.net_753199_544893785_photos_1.jpg_INSOON_EB_5512801818_20260812091433",
+     "url_photo": "https://photos.ubiflow.net/753199/544893785/photos/1.jpg?INSOON_EB_5512801818_20260812091433"
+    },
+    {
+     "url": "https://file.bienici.com/photo/ag753199-544893785_photos.ubiflow.net_753199_544893785_photos_2.jpg_INSOON_EB_5512801818_20260812091433",
+     "photo": "ag753199-544893785_photos.ubiflow.net_753199_544893785_photos_2.jpg_INSOON_EB_5512801818_20260812091433",
+     "url_photo": "https://photos.ubiflow.net/753199/544893785/photos/2.jpg?INSOON_EB_5512801818_20260812091433"
+    },
+    {
+     "url": "https://file.bienici.com/photo/ag753199-544893785_photos.ubiflow.net_753199_544893785_photos_3.jpg_INSOON_EB_5512801818_20260812091433",
+     "photo": "ag753199-544893785_photos.ubiflow.net_753199_544893785_photos_3.jpg_INSOON_EB_5512801818_20260812091433",
+     "url_photo": "https://photos.ubiflow.net/753199/544893785/photos/3.jpg?INSOON_EB_5512801818_20260812091433"
+    },
+    {
+     "url": "https://file.bienici.com/photo/ag753199-544893785_photos.ubiflow.net_753199_544893785_photos_4.jpg_INSOON_EB_5512801818_20260812091433",
+     "photo": "ag753199-544893785_photos.ubiflow.net_753199_544893785_photos_4.jpg_INSOON_EB_5512801818_20260812091433",
+     "url_photo": "https://photos.ubiflow.net/753199/544893785/photos/4.jpg?INSOON_EB_5512801818_20260812091433"
+    },
+    {
+     "url": "https://file.bienici.com/photo/ag753199-544893785_photos.ubiflow.net_753199_544893785_photos_5.jpg_INSOON_EB_5512801818_20260812091433",
+     "photo": "ag753199-544893785_photos.ubiflow.net_753199_544893785_photos_5.jpg_INSOON_EB_5512801818_20260812091433",
+     "url_photo": "https://photos.ubiflow.net/753199/544893785/photos/5.jpg?INSOON_EB_5512801818_20260812091433"
+    },
+    {
+     "url": "https://file.bienici.com/photo/ag753199-544893785_photos.ubiflow.net_753199_544893785_photos_6.jpg_INSOON_EB_5512801818_20260812091433",
+     "photo": "ag753199-544893785_photos.ubiflow.net_753199_544893785_photos_6.jpg_INSOON_EB_5512801818_20260812091433",
+     "url_photo": "https://photos.ubiflow.net/753199/544893785/photos/6.jpg?INSOON_EB_5512801818_20260812091433"
+    },
+    {
+     "url": "https://file.bienici.com/photo/ag753199-544893785_photos.ubiflow.net_753199_544893785_photos_7.jpg_INSOON_EB_5512801818_20260812091433",
+     "photo": "ag753199-544893785_photos.ubiflow.net_753199_544893785_photos_7.jpg_INSOON_EB_5512801818_20260812091433",
+     "url_photo": "https://photos.ubiflow.net/753199/544893785/photos/7.jpg?INSOON_EB_5512801818_20260812091433"
+    },
+    {
+     "url": "https://file.bienici.com/photo/ag753199-544893785_photos.ubiflow.net_753199_544893785_photos_8.jpg_INSOON_EB_5512801818_20260812091433",
+     "photo": "ag753199-544893785_photos.ubiflow.net_753199_544893785_photos_8.jpg_INSOON_EB_5512801818_20260812091433",
+     "url_photo": "https://photos.ubiflow.net/753199/544893785/photos/8.jpg?INSOON_EB_5512801818_20260812091433"
+    }
+   ],
+   "status": {
+    "isLeading": false,
+    "highlighted": false,
+    "onTheMarket": true,
+    "autoImported": true,
+    "closedByUser": false,
+    "is3dHighlighted": false
+   },
+   "charges": 200,
+   "adTypeFR": "location",
+   "blurInfo": {
+    "bbox": [
+     2.344655345419348,
+     48.890918731248895,
+     2.3460216162973757,
+     48.89181704918615
+    ],
+    "type": "disk",
+    "radius": 50,
+    "centroid": {
+     "lat": 48.89136789021752,
+     "lon": 2.345338480858362
+    },
+    "position": {
+     "lat": 48.89136789021752,
+     "lon": 2.345338480858362
+    }
+   },
+   "district": {
+    "cp": "75018",
+    "id": 100464,
+    "name": "Paris 18e Arrondissement - Jules Joffrin",
+    "id_type": 1,
+    "libelle": "Jules Joffrin",
+    "type_id": 1,
+    "code_insee": "75118",
+    "insee_code": "75118",
+    "id_polygone": 100464,
+    "postal_code": "75018"
+   },
+   "hasCellar": false,
+   "reference": "MC-31320",
+   "postalCode": "75018",
+   "accountType": "network",
+   "description": "Voici un appartement d'une chambre, à louer au coeur de Paris Montmartre, situé à deux pas de la mythique Place du Tertre et de Abbesses.\n\nVous allez vivre dans le village, à proximité des commerces et des marchés typiques.\n\nLes stations de métro et de bus sont très proches et très pratique pour aller partout dans Paris.\n\nL'appartement, au 2ème étage, sur cour, offre une atmosphère calme et confortable: entrée avec dressing, grand salon avec table à manger, cuisine séparée équipée, salle de bain séparée avec baignoire, chambre confortable avec lit double.",
+   "energyValue": 314,
+   "hasElevator": true,
+   "isFurnished": true,
+   "newProperty": false,
+   "surfaceArea": 70,
+   "with3dModel": false,
+   "addressKnown": true,
+   "agencyFeeUrl": "https://www.morningcroissant.fr/page/frais-de-service",
+   "propertyType": "flat",
+   "availableDate": "2026-08-12T00:00:00.000Z",
+   "chargesMethod": "flat-rate",
+   "phoneDisplays": [],
+   "roomsQuantity": 2,
+   "safetyDeposit": 3000,
+   "adCreatedByPro": true,
+   "departmentCode": "75",
+   "publicationDate": "2026-08-12T12:47:16.087Z",
+   "transactionType": "rent",
+   "bedroomsQuantity": 1,
+   "chargingStations": {
+    "providers": []
+   },
+   "maxReferenceRent": 2200,
+   "modificationDate": "2026-08-12T12:47:16.087Z",
+   "userRelativeData": {
+    "isAdmin": false,
+    "accountIds": [
+     "ubiflow-easybusiness-ag753199"
+    ],
+    "canSeeStats": false,
+    "isAdModifier": false,
+    "canSeeAddress": false,
+    "canOpenAdDetail": true,
+    "canSeeRealDates": false,
+    "importAccountId": "558bbfd06fbf04e50075bbce",
+    "canSetAsFeatured": false,
+    "searchAccountIds": [
+     "ubiflow-easybusiness-ag753199",
+     "contract-type-mandatary",
+     "558bbfd06fbf04e50075bbce"
+    ],
+    "canSeeExactPosition": false,
+    "canSeePublicationCertificatePdf": false,
+    "canSeePublicationCertificateHtml": false
+   },
+   "bathroomsQuantity": 1,
+   "nothingBehindForm": false,
+   "priceHasDecreased": false,
+   "greenhouseGazValue": 12,
+   "isBienIciExclusive": false,
+   "rentWithoutCharges": 2000,
+   "displayDistrictName": true,
+   "pricePerSquareMeter": 31.428571428571427,
+   "energyClassification": "E",
+   "highlightMailContact": false,
+   "maxEnergyConsumption": 2810,
+   "minEnergyConsumption": 2050,
+   "descriptionTextLength": 561,
+   "isSubjectToRentControl": true,
+   "endOfPromotedAsExclusive": 0,
+   "displayInsuranceEstimation": true,
+   "postalCodeForSearchFilters": "75018",
+   "greenhouseGazClassification": "C",
+   "energySimulationReferenceDate": "2023-01-01"
+  },
+  {
+   "id": "apimo-87221012",
+   "city": "Paris 8e",
+   "floor": 3,
+   "price": 6500,
+   "title": "Le service location de la maison BARNES vous présente ce bien :",
+   "adType": "rent",
+   "photos": [
+    {
+     "url": "https://file.bienici.com/photo/apimo-87221012_media.apimo.pro_cache_d6f3a28554cd2d06143dae72c2cc12eb_d29bf1992d_1920-original.jpg",
+     "photo": "apimo-87221012_media.apimo.pro_cache_d6f3a28554cd2d06143dae72c2cc12eb_d29bf1992d_1920-original.jpg",
+     "url_photo": "https://media.apimo.pro/cache/d6f3a28554cd2d06143dae72c2cc12eb_d29bf1992d_1920-original.jpg"
+    },
+    {
+     "url": "https://file.bienici.com/photo/apimo-87221012_media.apimo.pro_cache_2e5515ff5e38ef4142d47a62ba11ba79_1e0324c811_1920-original.jpg",
+     "photo": "apimo-87221012_media.apimo.pro_cache_2e5515ff5e38ef4142d47a62ba11ba79_1e0324c811_1920-original.jpg",
+     "url_photo": "https://media.apimo.pro/cache/2e5515ff5e38ef4142d47a62ba11ba79_1e0324c811_1920-original.jpg"
+    },
+    {
+     "url": "https://file.bienici.com/photo/apimo-87221012_media.apimo.pro_cache_fbc8e0a49245d4287674a69a55181382_186a70ad01_1920-original.jpg",
+     "photo": "apimo-87221012_media.apimo.pro_cache_fbc8e0a49245d4287674a69a55181382_186a70ad01_1920-original.jpg",
+     "url_photo": "https://media.apimo.pro/cache/fbc8e0a49245d4287674a69a55181382_186a70ad01_1920-original.jpg"
+    },
+    {
+     "url": "https://file.bienici.com/photo/apimo-87221012_media.apimo.pro_cache_f0b81eeefaf2bc5fb458897a2d434113_915ea37b88_1920-original.jpg",
+     "photo": "apimo-87221012_media.apimo.pro_cache_f0b81eeefaf2bc5fb458897a2d434113_915ea37b88_1920-original.jpg",
+     "url_photo": "https://media.apimo.pro/cache/f0b81eeefaf2bc5fb458897a2d434113_915ea37b88_1920-original.jpg"
+    },
+    {
+     "url": "https://file.bienici.com/photo/apimo-87221012_media.apimo.pro_cache_1e086f0bad4fa1ed1916567581bc4fe1_c31f7ee339_1920-original.jpg",
+     "photo": "apimo-87221012_media.apimo.pro_cache_1e086f0bad4fa1ed1916567581bc4fe1_c31f7ee339_1920-original.jpg",
+     "url_photo": "https://media.apimo.pro/cache/1e086f0bad4fa1ed1916567581bc4fe1_c31f7ee339_1920-original.jpg"
+    },
+    {
+     "url": "https://file.bienici.com/photo/apimo-87221012_media.apimo.pro_cache_c11613cb34036ab02f2d5a84e306ccfd_327774ba4b_1920-original.jpg",
+     "photo": "apimo-87221012_media.apimo.pro_cache_c11613cb34036ab02f2d5a84e306ccfd_327774ba4b_1920-original.jpg",
+     "url_photo": "https://media.apimo.pro/cache/c11613cb34036ab02f2d5a84e306ccfd_327774ba4b_1920-original.jpg"
+    },
+    {
+     "url": "https://file.bienici.com/photo/apimo-87221012_media.apimo.pro_cache_d197f69681e26593387a08fc62d7914e_6ac1183b1f_1920-original.jpg",
+     "photo": "apimo-87221012_media.apimo.pro_cache_d197f69681e26593387a08fc62d7914e_6ac1183b1f_1920-original.jpg",
+     "url_photo": "https://media.apimo.pro/cache/d197f69681e26593387a08fc62d7914e_6ac1183b1f_1920-original.jpg"
+    },
+    {
+     "url": "https://file.bienici.com/photo/apimo-87221012_media.apimo.pro_cache_64a090b4e87b43869256de3f224c3bbe_d9e54a3b6c_1920-original.jpg",
+     "photo": "apimo-87221012_media.apimo.pro_cache_64a090b4e87b43869256de3f224c3bbe_d9e54a3b6c_1920-original.jpg",
+     "url_photo": "https://media.apimo.pro/cache/64a090b4e87b43869256de3f224c3bbe_d9e54a3b6c_1920-original.jpg"
+    },
+    {
+     "url": "https://file.bienici.com/photo/apimo-87221012_media.apimo.pro_cache_657bea5cce5064795be4251ea3311eb7_3aeb64731e_1920-original.jpg",
+     "photo": "apimo-87221012_media.apimo.pro_cache_657bea5cce5064795be4251ea3311eb7_3aeb64731e_1920-original.jpg",
+     "url_photo": "https://media.apimo.pro/cache/657bea5cce5064795be4251ea3311eb7_3aeb64731e_1920-original.jpg"
+    },
+    {
+     "url": "https://file.bienici.com/photo/apimo-87221012_media.apimo.pro_cache_5de64cdee1641a833400dae937ab7b09_2c9eb0834a_1920-original.jpg",
+     "photo": "apimo-87221012_media.apimo.pro_cache_5de64cdee1641a833400dae937ab7b09_2c9eb0834a_1920-original.jpg",
+     "url_photo": "https://media.apimo.pro/cache/5de64cdee1641a833400dae937ab7b09_2c9eb0834a_1920-original.jpg"
+    },
+    {
+     "url": "https://file.bienici.com/photo/apimo-87221012_media.apimo.pro_cache_bbcfb58d161b98493e01cbb129013688_9fa6cc7168_1920-original.jpg",
+     "photo": "apimo-87221012_media.apimo.pro_cache_bbcfb58d161b98493e01cbb129013688_9fa6cc7168_1920-original.jpg",
+     "url_photo": "https://media.apimo.pro/cache/bbcfb58d161b98493e01cbb129013688_9fa6cc7168_1920-original.jpg"
+    }
+   ],
+   "status": {
+    "isLeading": false,
+    "highlighted": false,
+    "onTheMarket": true,
+    "autoImported": true,
+    "closedByUser": false,
+    "is3dHighlighted": false
+   },
+   "charges": 360,
+   "heating": "Radiateur Gaz Collectif",
+   "adTypeFR": "location",
+   "blurInfo": {
+    "bbox": [
+     2.2999032323401605,
+     48.87238883524159,
+     2.306732177853514,
+     48.87688047796983
+    ],
+    "type": "disk",
+    "origin": "accounts",
+    "radius": 250,
+    "centroid": {
+     "lat": 48.87463465660571,
+     "lon": 2.303317705096837
+    },
+    "position": {
+     "lat": 48.87463465660571,
+     "lon": 2.303317705096837
+    }
+   },
+   "district": {
+    "cp": "75008",
+    "id": 100533,
+    "name": "Paris 8e Arrondissement - Hoche Friedland",
+    "id_type": 1,
+    "libelle": "Hoche Friedland",
+    "type_id": 1,
+    "code_insee": "75108",
+    "insee_code": "75108",
+    "id_polygone": 100533,
+    "postal_code": "75008"
+   },
+   "reference": "87221012",
+   "customerId": "barnes-rentals-triangle-d-or-et-centre-1710951244546",
+   "postalCode": "75008",
+   "accountType": "agency",
+   "description": "Rue Chateaubriand\n\nPremière occupation après rénovation complète\n\nAu 3ème étage avec ascenseur d'un immeuble ancien, appartement meublé de 124.70 m².\n\nIl propose : Une entrée, un séjour ouvrant sur un balcon, une grande cuisine avec un espace dinatoire, deux chambres en suite avec leur salle de douche et rangements donnant sur la cour, une chambre principale avec salle de douche, rangements et WC donnant sur la cour, un espace buanderie, un WC séparé.\n\nRénovation récente et complète - Belle luminosité\n\nChauffage collectif et eau chaude individuelle électrique.\n\nDisponibilité : Immédiate\n\nLoyer : 6 500.00 € charges comprises par mois\n\nDépôt de garantie : 12 280.00 € (2 mois de loyer principal)\n\nNB : Cet appartement est proposé à la location uniquement en bail Code Civil (résidence secondaire ou en bail société)\nHonoraires Code Civil : 10 % du loyer annuel hors charges + TVA (20%) soit : 8 841.60 € TTC (incluant l’état des lieux d’entrée – 3.03 € / m² TTC soit 377.84 € TTC)\n\nVISITE VIRTUELLE DISPONIBLE AVEC UN CONSULTANT BARNES",
+   "energyValue": 224,
+   "hasDoorCode": true,
+   "hasElevator": true,
+   "hasIntercom": true,
+   "isFurnished": true,
+   "newProperty": false,
+   "surfaceArea": 124.7,
+   "with3dModel": false,
+   "addressKnown": false,
+   "propertyType": "flat",
+   "floorQuantity": 7,
+   "phoneDisplays": [],
+   "roomsQuantity": 5,
+   "safetyDeposit": 12280,
+   "adCreatedByPro": true,
+   "departmentCode": "75",
+   "publicationDate": "2026-08-11T09:33:55.955Z",
+   "transactionType": "rent",
+   "bedroomsQuantity": 3,
+   "chargingStations": {
+    "providers": []
+   },
+   "modificationDate": "2026-08-11T09:33:55.955Z",
+   "userRelativeData": {
+    "isAdmin": false,
+    "accountIds": [
+     "apimo-14948"
+    ],
+    "canSeeStats": false,
+    "isAdModifier": false,
+    "canSeeAddress": false,
+    "canOpenAdDetail": true,
+    "canSeeRealDates": false,
+    "importAccountId": "5913331e150de0009ce38406",
+    "canSetAsFeatured": false,
+    "searchAccountIds": [
+     "apimo-14948",
+     "5d2dcb333363540681401bc7",
+     "5db29933cba50600a9d74744",
+     "5ee738b708af1300b0af941d",
+     "contract-type-agency-package",
+     "5913331e150de0009ce38406"
+    ],
+    "canSeeExactPosition": false,
+    "canSeePublicationCertificatePdf": false,
+    "canSeePublicationCertificateHtml": false
+   },
+   "nothingBehindForm": false,
+   "priceHasDecreased": false,
+   "greenhouseGazValue": 31,
+   "isBienIciExclusive": false,
+   "opticalFiberStatus": "deploye",
+   "rentWithoutCharges": 6140,
+   "displayDistrictName": true,
+   "pricePerSquareMeter": 52.12510024057738,
+   "energyClassification": "D",
+   "hasGeorisquesMention": false,
+   "highlightMailContact": false,
+   "maxEnergyConsumption": 3020,
+   "minEnergyConsumption": 2190,
+   "descriptionTextLength": 1041,
+   "inventoryOfFixturesFees": 377.84,
+   "endOfPromotedAsExclusive": 0,
+   "displayInsuranceEstimation": true,
+   "postalCodeForSearchFilters": "75008",
+   "greenhouseGazClassification": "D",
+   "energySimulationReferenceDate": "2021-01-01",
+   "energyPerformanceDiagnosticDate": "2025-02-12",
+   "useJuly2021EnergyPerformanceDiagnostic": true
+  }
+ ]
+}

@@ -1,0 +1,26 @@
+name: CI
+
+# The repository had no CI at all. What this guards is narrow on purpose: the
+# things that were broken in production during this session and would have been
+# caught here - a type error in the matching logic, a scoring regression, and a
+# site that no longer builds.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test
+      # The Astro build is the last gate: the landing page and the onboarding
+      # are one deployment, and a broken page is a broken product.
+      - run: npm run build

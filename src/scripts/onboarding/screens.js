@@ -17,6 +17,8 @@ import * as inventory from '../../lib/prems/listings.js';
 import { upload, humanSize, validate } from '../../lib/prems/documents.js';
 import { client, ensureSession, isConfigured } from '../../lib/prems/supabase.js';
 import { scan as runScan, isAvailable as ocrAvailable } from '../../lib/prems/ocr.js';
+import { PLANS, checkoutUrl, startCheckout } from '../../lib/prems/billing.js';
+import { track } from '../../lib/prems/analytics.js';
 import {
   h,
   icon,
@@ -1336,7 +1338,6 @@ const done = {
   progress: 100,
   back: false,
   // Header stays: watching the bar land on 100% is the reward this screen owes.
-  hideFooter: true,
   build(ctx) {
     const draft = store.get();
 
@@ -1390,11 +1391,112 @@ const done = {
           ),
           h('div', { style: { height: '28px' } }),
           pushBtn,
-          h(
-            'a',
-            { class: 'ob-link ob-link--center', href: '/' },
-            'Revenir à l’accueil',
-          ),
+        ),
+      ),
+      cta: { label: 'Choisir ma formule', arrow: true },
+      hint: 'Dernière étape — 30 secondes.',
+      onNext: () => 'pricing',
+    };
+  },
+};
+
+/* =========================================================================
+ * Screen 14 - pricing
+ *
+ * The flow used to end on the celebration, which meant it ended by asking
+ * nothing. A completed file is the highest-intent moment this product will
+ * ever get: the person has just watched their own dossier come together and
+ * been told an agent is about to work on it. That is where the price belongs.
+ *
+ * The offers are the landing page's, unchanged - being quoted a different
+ * number after signing up than before is the fastest way to lose the trust the
+ * previous thirteen screens just built.
+ *
+ * Only two of the three are here. The upper tiers are a comparison exercise,
+ * and comparison is the enemy of a decision taken in the ten seconds after a
+ * reward. The standard plan stays as the honest baseline, and the founder
+ * offer takes the space the other two used to occupy - one payment, capped by
+ * an event the person actually wants (signing a lease) rather than by a date.
+ * ========================================================================= */
+function planCard(plan, { hero = false } = {}) {
+  const draft = store.get();
+
+  return h(
+    'article',
+    { class: `ob-plan${hero ? ' ob-plan--hero' : ''}` },
+    plan.eyebrow ? h('span', { class: 'ob-plan__flag' }, plan.eyebrow) : null,
+    h('h2', { class: 'ob-plan__name' }, plan.name),
+    h(
+      'p',
+      { class: 'ob-plan__price' },
+      h('span', { class: 'ob-plan__amount' }, plan.price),
+      h('span', { class: 'ob-plan__period' }, plan.period),
+    ),
+    h('p', { class: 'ob-plan__tagline' }, plan.tagline),
+    h(
+      'ul',
+      { class: 'ob-plan__list' },
+      plan.features.map((feature) =>
+        h(
+          'li',
+          {},
+          h('span', { class: 'ob-plan__tick', html: ICONS.check, 'aria-hidden': 'true' }),
+          feature,
+        ),
+      ),
+    ),
+    h(
+      'a',
+      {
+        class: `ob-btn${hero ? ' ob-btn--accent' : ' ob-btn--light'} ob-plan__cta`,
+        href:
+          // Ties the payment back to the account that made it: Stripe echoes
+          // client_reference_id on the session and on the webhook, so the plan
+          // lands on the right user without anyone retyping an email. The
+          // account id is carried by the billing module - see warm().
+          checkoutUrl(plan.id) || '/contact',
+        onClick: (event) => {
+          track('pricing', 'complete');
+          startCheckout(plan.id, event);
+        },
+      },
+      h('span', { class: 'ob-btn__inner' }, plan.cta),
+    ),
+    plan.note ? h('p', { class: 'ob-plan__note' }, plan.note) : null,
+  );
+}
+
+const pricing = {
+  progress: 100,
+  back: true,
+  hideFooter: true,
+  build() {
+    return {
+      body: h(
+        'div',
+        { class: 'ob-pricing' },
+        h('span', { class: 'ob__eyebrow' }, 'Nos tarifs'),
+        h('h1', { class: 'ob__title' }, 'Ton agent est prêt. Choisis ta formule.'),
+        h(
+          'p',
+          { class: 'ob__subtitle' },
+          'Une offre simple, sans engagement. Tu arrêtes dès que tu as signé.',
+        ),
+        h(
+          'div',
+          { class: 'ob-plans' },
+          planCard(PLANS.soldat),
+          planCard(PLANS.fondateur, { hero: true }),
+        ),
+        h(
+          'p',
+          { class: 'ob-pricing__trust' },
+          'Sans engagement · Pas de frais cachés · Paiement sécurisé par Stripe',
+        ),
+        h(
+          'a',
+          { class: 'ob-link ob-link--center', href: '/app' },
+          'Plus tard — voir mon espace',
         ),
       ),
     };
@@ -1415,6 +1517,7 @@ export const SCREENS = {
   identity,
   address,
   done,
+  pricing,
 };
 
 export const ORDER = [
@@ -1431,6 +1534,7 @@ export const ORDER = [
   'identity',
   'address',
   'done',
+  'pricing',
 ];
 
 export { isConfigured };

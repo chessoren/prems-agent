@@ -10,12 +10,18 @@
 --    per-user path isolation.
 
 -- ---------------------------------------------------------------------------
--- Listings: the demo inventory behind the "aha moment".
+-- The demo inventory behind the "aha moment".
 -- Readable by anyone (including the anonymous visitor on screen 4) because the
 -- preview is deliberately shown before signup. Writable only by the service
 -- role, which no browser ever holds.
+--
+-- Originally called `listings`. Migration 0002 renamed it and gave that name to
+-- the scraped catalogue, whose rows are emphatically NOT world-readable - so
+-- the name is spelled out here too. Leaving this file pointing at `listings`
+-- would have re-applied the "publicly readable" policy below to the production
+-- table on the next run, which is a data leak dressed as a no-op.
 -- ---------------------------------------------------------------------------
-create table if not exists public.listings (
+create table if not exists public.demo_listings (
   id              uuid primary key default gen_random_uuid(),
   city            text        not null,
   city_slug       text        not null,
@@ -36,14 +42,14 @@ create table if not exists public.listings (
   created_at      timestamptz not null default now()
 );
 
-create index if not exists listings_match_idx
-  on public.listings (city_slug, rooms, rent_eur, available_from);
+create index if not exists demo_listings_match_idx
+  on public.demo_listings (city_slug, rooms, rent_eur, available_from);
 
-alter table public.listings enable row level security;
+alter table public.demo_listings enable row level security;
 
-drop policy if exists "listings are publicly readable" on public.listings;
+drop policy if exists "listings are publicly readable" on public.demo_listings;
 create policy "listings are publicly readable"
-  on public.listings for select
+  on public.demo_listings for select
   to anon, authenticated
   using (true);
 

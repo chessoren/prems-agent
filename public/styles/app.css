@@ -1,0 +1,2191 @@
+/*
+ * The app - four tabs.
+ *
+ * Loaded after onboarding.css, which carries the design system: the reset, the
+ * local tokens, the 100px pills with their five-layer shadow, the option
+ * cards, the fields, the spinner. Nothing here redefines any of that. What
+ * follows is only what an app needs and a linear flow did not - a tab bar,
+ * feed cards, a calendar, threads, an accordion.
+ *
+ * Mobile-first, like the flow. The desktop layer at the bottom does one
+ * structural thing - it turns the bottom tab bar into a side rail - and
+ * otherwise buys air rather than scaling everything up.
+ */
+
+.pm {
+  --pm-nav-h: 68px;
+  --pm-rail: 236px;
+  --pm-radius: var(--ob-radius-card);
+  --pm-red: #e5484d;
+  --pm-green: #1f8d4a;
+  --pm-blue: #2f6fed;
+}
+
+body.pm-body {
+  margin: 0;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-family: "Inter", "Inter Placeholder", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100svh;
+}
+
+/* ==========================================================================
+ * Shell
+ * ========================================================================== */
+.pm__top {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  width: 100%;
+  padding: 12px var(--ob-gutter) 10px;
+  background: color-mix(in srgb, var(--color-surface) 88%, transparent);
+  backdrop-filter: saturate(180%) blur(14px);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+}
+
+.pm__top-inner {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 4px 12px;
+  width: 100%;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.pm__brand {
+  grid-column: 1 / -1;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--color-gray-500);
+  text-decoration: none;
+}
+
+.pm__brand-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(255, 122, 0, 0.18);
+}
+
+.pm__title {
+  margin: 2px 0 0;
+  font-family: "Inter Tight", "Inter Tight Placeholder", sans-serif;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--color-ink);
+}
+
+.pm__chip {
+  justify-self: end;
+  align-self: end;
+  padding: 5px 11px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--ob-radius-pill);
+  background: var(--color-white);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--color-ink-muted);
+  white-space: nowrap;
+}
+
+.pm__chip[hidden] {
+  display: none;
+}
+
+.pm__main {
+  flex: 1;
+  width: 100%;
+  padding: 0 var(--ob-gutter) calc(var(--pm-nav-h) + 28px + env(safe-area-inset-bottom));
+}
+
+.pm__view {
+  width: 100%;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.pm-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px 0 8px;
+  animation: pm-in 300ms var(--ob-ease-out) both;
+}
+
+@keyframes pm-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ==========================================================================
+ * Tab bar
+ *
+ * Fixed rather than sticky: a feed that scrolls under a bar the thumb can
+ * always reach is the difference between an app and a long page.
+ * ========================================================================== */
+.pm__tabs {
+  position: fixed;
+  z-index: 40;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+  background: color-mix(in srgb, var(--color-white) 92%, transparent);
+  backdrop-filter: saturate(180%) blur(18px);
+  -webkit-backdrop-filter: saturate(180%) blur(18px);
+  border-top: 1px solid var(--color-border);
+}
+
+.pm__tabs-inner {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.pm-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 4px;
+  border: 0;
+  border-radius: 14px;
+  background: none;
+  color: var(--color-gray-500);
+  cursor: pointer;
+  transition: color 160ms var(--ob-ease), transform 160ms var(--ob-ease);
+}
+
+.pm-tab:active {
+  transform: scale(0.94);
+}
+
+.pm-tab[aria-current="page"] {
+  color: var(--color-ink);
+}
+
+.pm-tab__icon {
+  position: relative;
+  display: inline-flex;
+}
+
+.pm-tab[aria-current="page"] .pm-tab__icon {
+  color: var(--color-accent);
+}
+
+.pm-tab__label {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* The Zeigarnik dot: one open task, made impossible to forget. Red is spent
+ * only here - nothing else in the product uses it - so it never has to compete
+ * for meaning. */
+.pm-badge {
+  position: absolute;
+  top: -5px;
+  right: -9px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--pm-red);
+  box-shadow: 0 0 0 2px var(--color-white);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  color: var(--color-white);
+  font-variant-numeric: tabular-nums;
+  animation: pm-pop 300ms var(--ob-ease-out) both;
+}
+
+.pm-badge[hidden] {
+  display: none;
+}
+
+@keyframes pm-pop {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+/* ==========================================================================
+ * Shared furniture
+ * ========================================================================== */
+.pm-section {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.pm-section__title {
+  margin: 0;
+  font-family: "Inter Tight", "Inter Tight Placeholder", sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.pm-section__aside {
+  font-size: 13px;
+  color: var(--color-gray-500);
+  white-space: nowrap;
+}
+
+.pm-foot-note {
+  font-size: 13px;
+  line-height: 150%;
+  color: var(--color-gray-500);
+  text-wrap: pretty;
+}
+
+.pm-learned {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 14px;
+  border-radius: 14px;
+  background: rgba(255, 122, 0, 0.08);
+  font-size: 13.5px;
+  line-height: 140%;
+  color: var(--color-ink-muted);
+}
+
+.pm-learned .pm-i {
+  flex: none;
+  color: var(--color-accent);
+}
+
+.pm-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 40px 24px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--pm-radius);
+  background: var(--color-white);
+  text-align: center;
+}
+
+.pm-empty__icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(255, 122, 0, 0.1);
+  color: var(--color-accent);
+}
+
+.pm-empty__title {
+  margin: 0;
+  font-family: "Inter Tight", "Inter Tight Placeholder", sans-serif;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.pm-empty__text {
+  max-width: 46ch;
+  font-size: 14.5px;
+  line-height: 152%;
+  color: var(--color-ink-muted);
+  text-wrap: pretty;
+}
+
+/* --------------------------------------------------------------------------
+ * Status vocabulary
+ *
+ * One tone per meaning, used identically on a card, in a sheet and at the head
+ * of a thread: orange always means "you", green always means "settled", grey
+ * always means "we are on it".
+ * -------------------------------------------------------------------------- */
+.pm-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: var(--ob-radius-pill);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.pm-status::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.pm-status--new {
+  background: rgba(47, 111, 237, 0.12);
+  color: var(--pm-blue);
+}
+
+.pm-status--working {
+  background: var(--color-gray-100);
+  color: var(--color-ink-muted);
+}
+
+.pm-status--action {
+  background: rgba(255, 122, 0, 0.14);
+  color: #b45300;
+}
+
+.pm-status--confirmed,
+.pm-status--won {
+  background: rgba(31, 141, 74, 0.12);
+  color: var(--pm-green);
+}
+
+.pm-status--lost {
+  background: var(--color-gray-50);
+  color: var(--color-gray-500);
+}
+
+/* Over the artwork the tinted pills lose their contrast, so the floating
+ * variant goes back to the dark scrim the onboarding grid uses. */
+.pm-status--float {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  background: rgba(26, 26, 26, 0.82);
+  backdrop-filter: blur(6px);
+  color: var(--color-white);
+}
+
+.pm-status--float.pm-status--action {
+  background: var(--color-accent);
+}
+
+.pm-status--float.pm-status--confirmed,
+.pm-status--float.pm-status--won {
+  background: var(--pm-green);
+}
+
+/* ==========================================================================
+ * Tab 1 - matches
+ * ========================================================================== */
+.pm-gate {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 24px 20px;
+  border: 2px solid var(--color-accent);
+  border-radius: var(--pm-radius);
+  background:
+    radial-gradient(120% 100% at 100% 0%, rgba(255, 122, 0, 0.1), transparent 60%),
+    var(--color-white);
+  box-shadow: 0px 2px 6px rgba(255, 122, 0, 0.08), 0px 16px 40px rgba(255, 122, 0, 0.12);
+}
+
+.pm-gate--inline {
+  border-color: var(--color-border);
+  border-width: 1px;
+  background: var(--color-white);
+  box-shadow: var(--ob-shadow-card);
+}
+
+.pm-gate__step {
+  padding: 5px 11px;
+  border-radius: var(--ob-radius-pill);
+  background: var(--color-accent);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-white);
+}
+
+.pm-gate__title {
+  margin: 0;
+  font-family: "Inter Tight", "Inter Tight Placeholder", sans-serif;
+  font-size: clamp(21px, 5.6vw, 26px);
+  font-weight: 600;
+  line-height: 122%;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.pm-gate__text {
+  font-size: 14.5px;
+  line-height: 154%;
+  color: var(--color-ink-muted);
+  text-wrap: pretty;
+}
+
+.pm-gate .ob-btn {
+  margin-top: 6px;
+}
+
+/* --------------------------------------------------------------------------
+ * The agent's log
+ *
+ * Monospaced times, newest first, one pulsing head. The point is not
+ * decoration: an empty first session with a visible account of the work being
+ * done reads as a system running, and a blank page reads as one that is not.
+ * -------------------------------------------------------------------------- */
+.pm-log {
+  padding: 16px 18px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--pm-radius);
+  background: var(--color-white);
+}
+
+.pm-log__head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--color-gray-100);
+}
+
+.pm-log__pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--pm-green);
+  animation: pm-pulse 2.1s var(--ob-ease) infinite;
+}
+
+@keyframes pm-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(31, 141, 74, 0.5);
+  }
+  60% {
+    box-shadow: 0 0 0 7px rgba(31, 141, 74, 0);
+  }
+}
+
+.pm-log__title {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.pm-log__city {
+  margin-left: auto;
+  font-size: 12.5px;
+  color: var(--color-gray-500);
+}
+
+.pm-log__list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin: 0;
+  padding: 13px 0 0;
+  list-style: none;
+}
+
+.pm-log__line {
+  display: grid;
+  grid-template-columns: 78px 1fr;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 13px;
+  line-height: 145%;
+  animation: pm-in 320ms var(--ob-ease-out) both;
+}
+
+.pm-log__time {
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+  color: var(--color-gray-400);
+  white-space: nowrap;
+}
+
+.pm-log__text {
+  color: var(--color-ink-muted);
+}
+
+.pm-log__line--action .pm-log__text {
+  color: var(--color-ink);
+  font-weight: 500;
+}
+
+.pm-log__line--pulse .pm-log__text,
+.pm-log__line--wait .pm-log__text {
+  color: var(--color-gray-500);
+  font-style: italic;
+}
+
+/* --------------------------------------------------------------------------
+ * Match cards
+ * -------------------------------------------------------------------------- */
+.pm-feed {
+  display: grid;
+  gap: 14px;
+}
+
+.pm-match {
+  position: relative;
+  display: grid;
+  grid-template-columns: 118px 1fr;
+  border-radius: var(--pm-radius);
+  background: var(--color-white);
+  box-shadow: var(--ob-shadow-card);
+  overflow: hidden;
+  touch-action: pan-y;
+  animation: ob-pop 420ms var(--ob-ease-out) both;
+  transition: transform 240ms var(--ob-ease-out), opacity 240ms var(--ob-ease-out),
+    box-shadow 240ms var(--ob-ease-out);
+}
+
+.pm-match[data-status="creneaux_proposes"] {
+  box-shadow: 0 0 0 2px var(--color-accent), var(--ob-shadow-card);
+}
+
+.pm-match[data-status="refuse"] {
+  opacity: 0.62;
+}
+
+.pm-match__photo {
+  position: relative;
+  min-height: 100%;
+}
+
+.pm-match__art {
+  position: absolute;
+  inset: 0;
+}
+
+.pm-match__score {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 2;
+  padding: 3px 8px;
+  border-radius: var(--ob-radius-pill);
+  background: rgba(255, 255, 255, 0.92);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.pm-match__body {
+  padding: 14px 15px 13px;
+}
+
+.pm-match__body > .pm-status {
+  margin-bottom: 8px;
+}
+
+.pm-match__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pm-match__price {
+  font-family: "Inter Display", "Inter Display Placeholder", sans-serif;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.pm-match__meta {
+  font-size: 13px;
+  color: var(--color-gray-500);
+}
+
+.pm-match__district {
+  margin-top: 2px;
+  font-size: 13.5px;
+  color: var(--color-ink-muted);
+}
+
+.pm-match__detected {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-accent);
+}
+
+.pm-match__detail {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 143%;
+  color: var(--color-ink-muted);
+}
+
+.pm-match__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.pm-match__actions .ob-btn__inner {
+  padding: 11px 18px;
+  font-size: 14.5px;
+}
+
+/* A text button, never a pill: dismissing must be easy to reach and never look
+ * like the thing the card is asking you to do. */
+.pm-match__dismiss {
+  align-self: flex-start;
+  padding: 6px 2px;
+  border: 0;
+  background: none;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-gray-500);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.pm-match__dismiss:hover {
+  color: var(--color-ink);
+}
+
+/* ==========================================================================
+ * Tab 2 - visits
+ * ========================================================================== */
+.pm-queue {
+  display: grid;
+  gap: 12px;
+}
+
+.pm-pending {
+  padding: 16px 16px 14px;
+  border: 2px solid var(--color-accent);
+  border-radius: var(--pm-radius);
+  background: var(--color-white);
+  box-shadow: 0px 2px 6px rgba(255, 122, 0, 0.08), 0px 14px 34px rgba(255, 122, 0, 0.1);
+}
+
+.pm-pending__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pm-pending__title {
+  font-size: 15.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.pm-pending__sub {
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--color-gray-500);
+}
+
+.pm-pending__slots {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.pm-slot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 16px;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--ob-radius-field);
+  background: var(--color-white);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 160ms var(--ob-ease), transform 160ms var(--ob-ease),
+    background 160ms var(--ob-ease);
+}
+
+.pm-slot:hover {
+  border-color: var(--color-accent);
+  background: rgba(255, 122, 0, 0.05);
+}
+
+.pm-slot:active {
+  transform: scale(0.985);
+}
+
+.pm-slot__day {
+  font-size: 14.5px;
+  font-weight: 500;
+}
+
+.pm-slot__time {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.pm-pending__note {
+  margin-top: 11px;
+  font-size: 12.5px;
+  color: var(--color-gray-500);
+}
+
+.pm-review {
+  padding: 16px 16px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--pm-radius);
+  background: var(--color-white);
+  box-shadow: var(--ob-shadow-card);
+}
+
+.pm-review__title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.pm-review__sub {
+  margin-top: 3px;
+  font-size: 13px;
+  color: var(--color-gray-500);
+}
+
+.pm-review__actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 13px;
+}
+
+.pm-review__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--ob-radius-pill);
+  background: var(--color-white);
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--color-ink-muted);
+  cursor: pointer;
+  transition: border-color 160ms var(--ob-ease), color 160ms var(--ob-ease);
+}
+
+.pm-review__btn:hover {
+  border-color: var(--color-gray-400);
+  color: var(--color-ink);
+}
+
+.pm-review__btn--yes {
+  border-color: rgba(31, 141, 74, 0.4);
+  background: rgba(31, 141, 74, 0.07);
+  color: var(--pm-green);
+}
+
+/* --------------------------------------------------------------------------
+ * Calendar
+ *
+ * Both views are rendered once and toggled in CSS. A resize across the
+ * breakpoint then costs nothing and there is no view state to lose.
+ * -------------------------------------------------------------------------- */
+.pm-cal {
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--pm-radius);
+  background: var(--color-white);
+}
+
+.pm-cal--month {
+  display: none;
+}
+
+.pm-cal__caption {
+  margin-bottom: 12px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--color-ink-muted);
+}
+
+/* French dates come out of Intl in lower case, and `capitalize` would title
+ * every word - "Semaine Du 10 Août". Only the first letter is wrong. */
+.pm-cal__caption::first-letter,
+.pm-slot__day::first-letter,
+.pm-upcoming__when::first-letter,
+.pm-visit__when::first-letter {
+  text-transform: uppercase;
+}
+
+.pm-cal__week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.pm-cal__day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-height: 74px;
+  padding: 8px 2px;
+  border-radius: 12px;
+  background: var(--color-gray-50);
+}
+
+.pm-cal__day.is-today {
+  background: var(--color-ink);
+  color: var(--color-white);
+}
+
+.pm-cal__day.has-visit {
+  background: rgba(255, 122, 0, 0.1);
+  color: var(--color-ink);
+}
+
+.pm-cal__dow {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+}
+
+.pm-cal__num {
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.pm-cal__chips {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+}
+
+.pm-cal__chip {
+  width: 100%;
+  padding: 3px 4px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--color-accent);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-white);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pm-upcoming {
+  display: grid;
+  gap: 8px;
+}
+
+.pm-upcoming__row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--ob-radius-field);
+  background: var(--color-white);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms var(--ob-ease);
+}
+
+.pm-upcoming__row:hover {
+  border-color: var(--color-gray-400);
+}
+
+.pm-upcoming__when {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pm-upcoming__what {
+  grid-column: 1;
+  font-size: 13px;
+  color: var(--color-gray-500);
+}
+
+.pm-upcoming__chevron {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  font-size: 22px;
+  color: var(--color-gray-400);
+}
+
+/* --------------------------------------------------------------------------
+ * Availability grid
+ * -------------------------------------------------------------------------- */
+.pm-avail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--pm-radius);
+  background: var(--color-white);
+}
+
+.pm-avail__grid {
+  display: grid;
+  gap: 5px;
+}
+
+.pm-avail__row {
+  display: grid;
+  grid-template-columns: 42px repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  align-items: center;
+}
+
+.pm-avail__corner {
+  display: block;
+}
+
+.pm-avail__col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding-bottom: 4px;
+}
+
+.pm-avail__col-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--color-ink-muted);
+}
+
+.pm-avail__col-range {
+  font-size: 9.5px;
+  color: var(--color-gray-400);
+}
+
+.pm-avail__day {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-ink-muted);
+}
+
+.pm-avail__cell {
+  height: 34px;
+  border: 1.5px solid var(--color-border);
+  border-radius: 9px;
+  background: var(--color-white);
+  cursor: pointer;
+  transition: background 140ms var(--ob-ease), border-color 140ms var(--ob-ease),
+    transform 140ms var(--ob-ease);
+}
+
+.pm-avail__cell:hover {
+  border-color: var(--color-gray-400);
+}
+
+.pm-avail__cell[data-selected="true"] {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.4);
+}
+
+.pm-avail__cell:active {
+  transform: scale(0.92);
+}
+
+.pm-avail__count {
+  font-size: 13px;
+  color: var(--color-gray-500);
+  text-align: center;
+}
+
+/* --------------------------------------------------------------------------
+ * Visit sheet
+ * -------------------------------------------------------------------------- */
+.pm-visit__when {
+  font-family: "Inter Tight", "Inter Tight Placeholder", sans-serif;
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin-bottom: 10px;
+}
+
+.pm-visit__list {
+  display: grid;
+  gap: 2px;
+  margin: 18px 0 0;
+}
+
+.pm-visit__list dt {
+  margin-top: 12px;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-gray-400);
+}
+
+.pm-visit__list dd {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 148%;
+  color: var(--color-ink);
+}
+
+.pm-visit__reminder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 20px;
+  padding: 11px 14px;
+  border-radius: 14px;
+  background: var(--color-gray-50);
+  font-size: 13px;
+  color: var(--color-ink-muted);
+}
+
+.pm-visit__actions {
+  margin-top: 18px;
+}
+
+/* ==========================================================================
+ * Tab 3 - messages
+ * ========================================================================== */
+.pm-threads {
+  display: grid;
+  gap: 8px;
+}
+
+.pm-thread {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 15px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--pm-radius);
+  background: var(--color-white);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms var(--ob-ease), transform 160ms var(--ob-ease);
+}
+
+.pm-thread:hover {
+  border-color: var(--color-gray-400);
+}
+
+.pm-thread:active {
+  transform: scale(0.995);
+}
+
+.pm-thread.is-unread {
+  border-color: var(--color-ink);
+}
+
+.pm-thread__avatar {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--color-gray-100);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-ink-muted);
+}
+
+.pm-thread__body {
+  min-width: 0;
+}
+
+.pm-thread__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pm-thread__name {
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.pm-thread.is-unread .pm-thread__name {
+  font-weight: 700;
+}
+
+.pm-thread__time {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--color-gray-400);
+}
+
+.pm-thread__sub {
+  display: block;
+  font-size: 12.5px;
+  color: var(--color-accent);
+}
+
+.pm-thread__preview {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-top: 3px;
+  font-size: 13px;
+  line-height: 142%;
+  color: var(--color-gray-500);
+}
+
+.pm-thread__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--pm-red);
+}
+
+/* --------------------------------------------------------------------------
+ * One conversation
+ * -------------------------------------------------------------------------- */
+.pm-conv__head {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.pm-conv__back {
+  grid-column: 1 / -1;
+  justify-self: start;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--color-gray-500);
+  cursor: pointer;
+}
+
+.pm-conv__back:hover {
+  color: var(--color-ink);
+}
+
+.pm-conv__title h2 {
+  margin: 0;
+  font-family: "Inter Tight", "Inter Tight Placeholder", sans-serif;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.pm-conv__title p {
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--color-gray-500);
+}
+
+.pm-conv__stream {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 0;
+}
+
+.pm-msg {
+  max-width: 88%;
+  padding: 12px 15px;
+  border-radius: 18px;
+  animation: pm-in 300ms var(--ob-ease-out) both;
+}
+
+/* The agency is the only voice on the left, so "someone else wrote this" is
+ * readable at a glance without reading a single word. */
+.pm-msg--agence {
+  align-self: flex-start;
+  border-bottom-left-radius: 6px;
+  background: var(--color-white);
+  border: 1px solid var(--color-border);
+}
+
+/* The AI's messages are never drawn as the person's own. Outlined in the
+ * accent with an explicit byline, they read as a third voice - which is what
+ * they are, and what someone taking over a thread has to be able to see. */
+.pm-msg--agent {
+  align-self: flex-end;
+  border-bottom-right-radius: 6px;
+  border: 1.5px solid var(--color-accent);
+  background: rgba(255, 122, 0, 0.06);
+}
+
+.pm-msg--moi {
+  align-self: flex-end;
+  border-bottom-right-radius: 6px;
+  background: var(--color-ink);
+  color: var(--color-white);
+}
+
+.pm-msg__author {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.pm-msg__body {
+  font-size: 14.5px;
+  line-height: 152%;
+  text-wrap: pretty;
+}
+
+.pm-msg__time {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--color-gray-400);
+}
+
+.pm-msg--moi .pm-msg__time {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.pm-conv__composer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border);
+}
+
+.pm-conv__manual {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--color-gray-500);
+}
+
+.pm-conv__row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.pm-conv__send {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  border: 0;
+  border-radius: var(--ob-radius-field);
+  background: var(--color-ink);
+  color: var(--color-white);
+  cursor: pointer;
+}
+
+.pm-conv__handover {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 12px 18px;
+  border: 1.5px dashed var(--color-border);
+  border-radius: var(--ob-radius-pill);
+  background: none;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-ink-muted);
+  cursor: pointer;
+  transition: border-color 160ms var(--ob-ease), color 160ms var(--ob-ease);
+}
+
+.pm-conv__handover:hover {
+  border-color: var(--color-ink);
+  color: var(--color-ink);
+}
+
+/* ==========================================================================
+ * Tab 4 - profile
+ * ========================================================================== */
+.pm-identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.pm-identity__avatar {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--color-ink);
+  font-family: "Inter Tight", "Inter Tight Placeholder", sans-serif;
+  font-size: 21px;
+  font-weight: 600;
+  color: var(--color-white);
+}
+
+.pm-identity__name {
+  font-family: "Inter Tight", "Inter Tight Placeholder", sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.pm-identity__sub {
+  margin-top: 1px;
+  font-size: 13.5px;
+  color: var(--color-gray-500);
+}
+
+/* --------------------------------------------------------------------------
+ * Accordion
+ * -------------------------------------------------------------------------- */
+.pm-accordion {
+  display: grid;
+  gap: 10px;
+}
+
+.pm-acc {
+  border: 1px solid var(--color-border);
+  border-radius: var(--pm-radius);
+  background: var(--color-white);
+  overflow: hidden;
+}
+
+.pm-acc__head {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  padding: 16px 16px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pm-acc__icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: var(--color-gray-50);
+  color: var(--color-ink-muted);
+}
+
+.pm-acc__head[aria-expanded="true"] .pm-acc__icon {
+  background: rgba(255, 122, 0, 0.12);
+  color: var(--color-accent);
+}
+
+.pm-acc__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.pm-acc__label {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.pm-acc__hint {
+  display: block;
+  margin-top: 1px;
+  font-size: 12.5px;
+  color: var(--color-gray-500);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pm-acc__flag {
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--pm-red);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-white);
+}
+
+.pm-acc__chevron {
+  flex: none;
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  color: var(--color-gray-400);
+  transition: transform 220ms var(--ob-ease-out);
+}
+
+.pm-acc__head[aria-expanded="true"] .pm-acc__chevron {
+  transform: rotate(180deg);
+}
+
+.pm-acc__body {
+  padding: 4px 16px 18px;
+  border-top: 1px solid var(--color-gray-100);
+  padding-top: 16px;
+}
+
+.pm-acc__panel[hidden] {
+  display: none;
+}
+
+.pm-form {
+  display: grid;
+  gap: 14px;
+}
+
+.pm-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237a7a7a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 16px center;
+  background-size: 18px;
+  padding-right: 44px;
+}
+
+/* --------------------------------------------------------------------------
+ * Documents
+ * -------------------------------------------------------------------------- */
+.pm-docs {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.pm-doc {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 13px;
+  border-radius: var(--ob-radius-field);
+  background: var(--color-gray-50);
+}
+
+.pm-doc__icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--color-white);
+  color: var(--color-gray-500);
+}
+
+.pm-doc__label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pm-doc__detail {
+  display: block;
+  margin-top: 1px;
+  font-size: 12.5px;
+  line-height: 138%;
+  color: var(--color-gray-500);
+}
+
+.pm-doc__badge {
+  flex: none;
+  padding: 4px 9px;
+  border-radius: var(--ob-radius-pill);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pm-doc__badge--ok {
+  background: rgba(31, 141, 74, 0.12);
+  color: var(--pm-green);
+}
+
+.pm-doc__badge--warn {
+  background: rgba(255, 122, 0, 0.16);
+  color: #b45300;
+}
+
+.pm-doc__badge--todo {
+  background: var(--color-gray-100);
+  color: var(--color-gray-500);
+}
+
+.pm-warn {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 122, 0, 0.34);
+  background: rgba(255, 122, 0, 0.07);
+  font-size: 13px;
+  line-height: 148%;
+  color: var(--color-ink-muted);
+}
+
+/* --------------------------------------------------------------------------
+ * Solvency
+ * -------------------------------------------------------------------------- */
+.pm-solvency__headline {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 145%;
+  color: var(--color-ink-muted);
+}
+
+.pm-solvency__ratio {
+  font-family: "Inter Tight", "Inter Tight Placeholder", sans-serif;
+  font-size: 42px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  color: var(--color-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.pm-solvency__bar {
+  position: relative;
+  height: 12px;
+  margin: 16px 0 8px;
+  border-radius: var(--ob-radius-pill);
+  background: var(--color-gray-100);
+  overflow: hidden;
+}
+
+.pm-solvency__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: var(--ob-radius-pill);
+  background: linear-gradient(180deg, #ffa14d, var(--color-accent));
+  transition: width 620ms var(--ob-ease-out);
+}
+
+.pm-solvency__fill.is-strong {
+  background: linear-gradient(180deg, #46b877, var(--pm-green));
+}
+
+/* The 3x threshold, drawn where agencies actually put it. */
+.pm-solvency__mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--color-ink);
+  opacity: 0.5;
+}
+
+.pm-solvency__scale {
+  font-size: 12px;
+  color: var(--color-gray-400);
+}
+
+.pm-solvency__verdict {
+  margin-top: 14px;
+  padding: 13px 15px;
+  border-radius: 14px;
+  border: 1.5px solid;
+  font-size: 13.5px;
+  line-height: 150%;
+}
+
+.pm-solvency__verdict--ok {
+  border-color: rgba(31, 141, 74, 0.3);
+  background: rgba(31, 141, 74, 0.07);
+  color: var(--color-ink-muted);
+}
+
+.pm-solvency__verdict--warn {
+  border-color: rgba(255, 122, 0, 0.34);
+  background: rgba(255, 122, 0, 0.07);
+  color: var(--color-ink-muted);
+}
+
+.pm-solvency__verdict .ob-btn {
+  margin-top: 12px;
+}
+
+.pm-solvency__none {
+  font-size: 14px;
+  line-height: 150%;
+  color: var(--color-ink-muted);
+}
+
+/* --------------------------------------------------------------------------
+ * Preferences
+ * -------------------------------------------------------------------------- */
+.pm-prefs {
+  display: grid;
+  gap: 4px;
+}
+
+.pm-prefs__label {
+  margin-top: 16px;
+  margin-bottom: 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-gray-400);
+}
+
+.pm-switch {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-gray-100);
+  cursor: pointer;
+}
+
+.pm-switch__label {
+  display: block;
+  font-size: 14.5px;
+  font-weight: 500;
+}
+
+.pm-switch__hint {
+  display: block;
+  margin-top: 1px;
+  font-size: 12.5px;
+  color: var(--color-gray-500);
+}
+
+.pm-switch__input {
+  position: absolute;
+  opacity: 0;
+  width: 46px;
+  height: 28px;
+  right: 0;
+  cursor: pointer;
+}
+
+.pm-switch__track {
+  position: relative;
+  width: 46px;
+  height: 28px;
+  border-radius: 14px;
+  background: var(--color-gray-100);
+  transition: background 180ms var(--ob-ease);
+}
+
+.pm-switch__track::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--color-white);
+  box-shadow: 0 1px 3px rgba(26, 26, 26, 0.25);
+  transition: transform 180ms var(--ob-ease-out);
+}
+
+.pm-switch__input:checked ~ .pm-switch__track {
+  background: var(--color-accent);
+}
+
+.pm-switch__input:checked ~ .pm-switch__track::after {
+  transform: translateX(18px);
+}
+
+.pm-switch__input:focus-visible ~ .pm-switch__track {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 2px;
+}
+
+/* --------------------------------------------------------------------------
+ * Subscription
+ * -------------------------------------------------------------------------- */
+.pm-sub {
+  display: grid;
+  gap: 10px;
+}
+
+.pm-sub__status {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 6px 13px;
+  border-radius: var(--ob-radius-pill);
+  background: rgba(31, 141, 74, 0.12);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pm-green);
+}
+
+.pm-sub__status--none {
+  background: var(--color-gray-100);
+  color: var(--color-gray-500);
+}
+
+.pm-sub__text {
+  font-size: 13.5px;
+  line-height: 152%;
+  color: var(--color-ink-muted);
+  text-wrap: pretty;
+}
+
+.pm-sub__since,
+.pm-sub__pending {
+  font-size: 12.5px;
+  line-height: 148%;
+  color: var(--color-gray-500);
+}
+
+/* ==========================================================================
+ * Sheet
+ * ========================================================================== */
+.pm-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(13, 13, 13, 0.44);
+  backdrop-filter: blur(3px);
+  animation: pm-fade 220ms var(--ob-ease) both;
+}
+
+.pm-sheet.is-closing {
+  animation: pm-fade 200ms var(--ob-ease) reverse both;
+}
+
+@keyframes pm-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.pm-sheet__panel {
+  width: 100%;
+  max-width: 560px;
+  max-height: 88svh;
+  overflow-y: auto;
+  padding: 6px 20px calc(24px + env(safe-area-inset-bottom));
+  border-radius: 24px 24px 0 0;
+  background: var(--color-surface);
+  animation: pm-rise 300ms var(--ob-ease-out) both;
+}
+
+.pm-sheet.is-closing .pm-sheet__panel {
+  animation: pm-rise 200ms var(--ob-ease) reverse both;
+}
+
+@keyframes pm-rise {
+  from {
+    transform: translateY(28px);
+    opacity: 0.4;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.pm-sheet__head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 0 12px;
+  background: var(--color-surface);
+}
+
+.pm-sheet__title {
+  margin: 0;
+  font-family: "Inter Tight", "Inter Tight Placeholder", sans-serif;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.pm-sheet__close {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: var(--color-white);
+  color: var(--color-ink);
+  cursor: pointer;
+}
+
+.pm-sheet__close svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* ==========================================================================
+ * Toast
+ * ========================================================================== */
+.pm-toast {
+  position: fixed;
+  z-index: 80;
+  left: 50%;
+  bottom: calc(var(--pm-nav-h) + 18px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: calc(100% - 32px);
+  max-width: 460px;
+  padding: 13px 16px;
+  border-radius: 16px;
+  background: var(--color-ink);
+  box-shadow: 0 12px 34px rgba(13, 13, 13, 0.28);
+  color: var(--color-white);
+  animation: pm-toast-in 300ms var(--ob-ease-out) both;
+}
+
+.pm-toast.is-leaving {
+  animation: pm-toast-in 240ms var(--ob-ease) reverse both;
+}
+
+@keyframes pm-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 16px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.pm-toast__text {
+  flex: 1;
+  font-size: 13.5px;
+  line-height: 142%;
+}
+
+.pm-toast__action {
+  flex: none;
+  padding: 6px 2px;
+  border: 0;
+  background: none;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--color-accent);
+  cursor: pointer;
+}
+
+/* ==========================================================================
+ * Desktop
+ *
+ * One structural change: the bottom bar becomes a side rail, which is where a
+ * pointer expects navigation and which frees the vertical space the calendar
+ * and the message stream want. Everything else buys air.
+ * ========================================================================== */
+@media (min-width: 810px) {
+  .pm {
+    --ob-gutter: 40px;
+  }
+
+  .pm__tabs {
+    top: 0;
+    right: auto;
+    width: var(--pm-rail);
+    padding: 96px 16px 24px;
+    border-top: 0;
+    border-right: 1px solid var(--color-border);
+    background: var(--color-white);
+  }
+
+  .pm__tabs-inner {
+    grid-template-columns: 1fr;
+    gap: 4px;
+    max-width: none;
+  }
+
+  .pm-tab {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 11px 14px;
+  }
+
+  .pm-tab:hover {
+    background: var(--color-gray-50);
+  }
+
+  .pm-tab[aria-current="page"] {
+    background: var(--color-gray-50);
+  }
+
+  .pm-tab__label {
+    font-size: 14.5px;
+  }
+
+  .pm__top,
+  .pm__main {
+    padding-left: calc(var(--pm-rail) + var(--ob-gutter));
+  }
+
+  .pm__top {
+    padding-top: 22px;
+    padding-bottom: 16px;
+  }
+
+  .pm__top-inner {
+    max-width: 1040px;
+    margin: 0;
+  }
+
+  .pm__brand {
+    /* The rail carries the identity on desktop; repeating it above the title
+     * would be a second wordmark in the same eyeline. */
+    display: none;
+  }
+
+  .pm__title {
+    font-size: 30px;
+  }
+
+  .pm__main {
+    padding-bottom: 64px;
+  }
+
+  .pm__view {
+    max-width: 1040px;
+    margin: 0;
+  }
+
+  .pm-page {
+    gap: 22px;
+  }
+
+  /* Two columns for the feed: at this width one column of cards leaves half
+   * the screen empty and pushes the fourth match below the fold. */
+  .pm-feed {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+  }
+
+  .pm-match {
+    grid-template-columns: 150px 1fr;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .pm-match:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--ob-shadow-card-hover);
+    }
+  }
+
+  .pm-queue {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* A month is the useful unit once there is room for it; a week strip on a
+   * 1440px screen is seven columns of white space. */
+  .pm-cal--week {
+    display: none;
+  }
+
+  .pm-cal--month {
+    display: block;
+    padding: 20px;
+  }
+
+  .pm-cal__dows {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .pm-cal__dows span {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-gray-400);
+    text-align: center;
+  }
+
+  .pm-cal__month {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .pm-cal__cell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-height: 84px;
+    padding: 8px;
+    border-radius: 12px;
+    background: var(--color-gray-50);
+  }
+
+  .pm-cal__cell.is-outside {
+    opacity: 0.4;
+  }
+
+  .pm-cal__cell.is-today {
+    background: var(--color-ink);
+    color: var(--color-white);
+  }
+
+  .pm-cal__cell.has-visit {
+    background: rgba(255, 122, 0, 0.1);
+    color: var(--color-ink);
+  }
+
+  .pm-avail__row {
+    grid-template-columns: 64px repeat(4, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .pm-avail__cell {
+    height: 40px;
+  }
+
+  .pm-avail {
+    padding: 22px 20px;
+  }
+
+  /* The message stream reads better narrow; the shell is wide for the feed and
+   * the calendar, not for prose. */
+  .pm-conv {
+    max-width: 720px;
+  }
+
+  .pm-msg {
+    max-width: 76%;
+  }
+
+  .pm-threads,
+  .pm-accordion,
+  .pm-upcoming {
+    max-width: 760px;
+  }
+
+  .pm-empty {
+    padding: 56px 32px;
+  }
+
+  .pm-sheet {
+    align-items: center;
+  }
+
+  .pm-sheet__panel {
+    max-height: 82svh;
+    border-radius: 24px;
+    padding-bottom: 26px;
+  }
+
+  .pm-toast {
+    left: calc(var(--pm-rail) + 50%);
+    bottom: 26px;
+  }
+
+  /* The pill-width rule in onboarding.css centres buttons at 400px, which is
+   * right for a single call to action under a question and wrong inside a
+   * card that is already narrow. */
+  .pm .ob-btn {
+    max-width: none;
+    margin-inline: 0;
+  }
+}
+
+@media (min-width: 1200px) {
+  .pm {
+    --pm-rail: 260px;
+  }
+
+  .pm-feed {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  /* Three columns: the photo goes on top and the card becomes two stacked
+   * rows. `align-content: start` matters - cards in a grid row stretch to the
+   * tallest one, and with auto rows the leftover height was being handed to
+   * the photo, whose aspect-ratio then widened it past the card's own edge and
+   * pushed the score chip out of view. */
+  .pm-match {
+    grid-template-columns: 1fr;
+    align-content: start;
+  }
+
+  .pm-match__photo {
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    min-height: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pm *,
+  .pm-toast,
+  .pm-sheet,
+  .pm-sheet__panel {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

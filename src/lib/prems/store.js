@@ -121,18 +121,100 @@ export async function sync() {
   }
 
   if (state.citySlug && state.rooms) {
-    const { error: searchError } = await supabase.from('searches').insert({
-      user_id: uid,
-      city: state.city,
-      city_slug: state.citySlug,
-      budget_max_eur: state.budget,
-      property_type: state.propertyType || 'appartement',
-      rooms: state.rooms,
-      move_in_date: state.moveInAsap ? null : state.moveInDate,
-      move_in_asap: state.moveInAsap,
-    });
+    const row = { user_id: uid, ...criteria() };
+
+    // Update the existing search rather than adding one.
+    //
+    // This used to insert unconditionally, and `sync()` is called on several
+    // screens - so completing the flow left two or three identical searches on
+    // the same account. In production that produced 493 duplicate matches: the
+    // same apartment found twice by the same person, competing against itself
+    // for the per-listing cap.
+    const { data: existing } = await supabase
+      .from('searches')
+      .select('id')
+      .eq('user_id', uid)
+      .eq('active', true)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    const { error: searchError } = existing?.id
+      ? await supabase.from('searches').update(row).eq('id', existing.id)
+      : await supabase.from('searches').insert(row);
+
     if (searchError) console.warn('[prems] recherche non enregistrée :', searchError.message);
   }
 
   return true;
+}
+
+/**
+ * The draft, translated into what the matcher actually reads.
+ *
+ * These are two different vocabularies and nobody had joined them, so until
+ * now only the budget crossed over. The flow collected a city, a room count
+ * and a property type; the matcher reads `zones`, `rooms_min` / `rooms_max`
+ * and `property_types`, and found all three empty. Measured on the live
+ * account that asked for *Paris, 4 pièces*: the top matches were
+ * Rueil-Malmaison 2 pièces and Saint-Germain-en-Laye 1 pièce.
+ *
+ * `hardFilter` skips a criterion entirely when its field is empty, which is
+ * why this failed silently instead of returning nothing.
+ */
+export function criteria() {
+  return {
+    city: state.city,
+    city_slug: state.citySlug,
+    budget_max_eur: state.budget,
+    property_type: state.propertyType || 'appartement',
+    rooms: state.rooms,
+    move_in_date: state.moveInAsap ? null : state.moveInDate,
+    move_in_asap: state.moveInAsap,
+    zones: zones(),
+    ...roomBounds(),
+    property_types: propertyTypes(),
+  };
+}
+
+/**
+ * Where to search, as the matcher understands it.
+ *
+ * A two-character zone is read as a department and a five-character one as an
+ * exact postcode. The department is the right unit here: the flow captures one
+ * postcode per commune, and matching it exactly would keep Paris 15e out of a
+ * search for "Paris" (75001), and two thirds of Rennes out of a search for
+ * Rennes. Erring wide costs a few irrelevant matches, which the score pushes
+ * down; erring narrow costs the apartment, silently.
+ */
+function zones() {
+  const postcode = state.postcode ? String(state.postcode).replace(/\D/g, '') : '';
+  return postcode.length >= 2 ? [postcode.slice(0, 2)] : [];
+}
+
+/**
+ * "T4 et plus" is the only open-ended option on the screen, so it is the only
+ * one without an upper bound. The others promise an exact size and are held to
+ * it - the score already rewards a near miss, and a hard filter that quietly
+ * widens is how someone asking for a T2 ends up reading about studios.
+ */
+function roomBounds() {
+  const rooms = Number(state.rooms);
+  if (!Number.isFinite(rooms) || rooms <= 0) return { rooms_min: null, rooms_max: null };
+  return rooms >= 4
+    ? { rooms_min: 4, rooms_max: null }
+    : { rooms_min: rooms, rooms_max: rooms };
+}
+
+/** The flow says studio/appartement/indifferent; the catalogue says flat/house. */
+function propertyTypes() {
+  switch (state.propertyType) {
+    case 'studio':
+    case 'appartement':
+      return ['flat'];
+    // "T4 et plus" is announced as "grand appartement ou maison", so it must
+    // not exclude houses.
+    default:
+      return [];
+  }
 }
