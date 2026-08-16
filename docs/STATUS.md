@@ -31,6 +31,34 @@ Les matches sont passés de 1 230 à 737 non pas en perdant quelque chose, mais
 en cessant de compter deux fois : 493 étaient le même appartement trouvé par
 les deux recherches d'un même client.
 
+### Couverture : mesurée contre la source, pas déduite des logs
+
+**41 annonces sur 41, soit 0 manquante sur 51 heures.** Relevé en interrogeant
+directement Bien'ici (600 annonces nationales, tri par date de publication),
+en filtrant sur les zones réellement scrapées, puis en comparant les
+identifiants à la base.
+
+C'est le seul contrôle qui vaut : `1 440 runs, 0 échec` dit que le scraper
+tourne, pas qu'il trouve tout. Un scraper qui rate la moitié du marché produit
+exactement les mêmes logs verts.
+
+Deux réserves honnêtes sur ce chiffre : l'échantillon ne contient que des
+annonces encore en ligne (`onTheMarket`), donc il ne mesure pas celles publiées
+puis retirées dans l'intervalle ; et il couvre 51 heures, pas un mois.
+
+**Le volume est faible et ce n'est pas une panne.** ~7 nouvelles annonces par
+jour, parce que `active_scrape_zones()` suit la demande : un seul client actif
+demande `75, 92, 93, 94`, donc on ne collecte que ces quatre départements. La
+chute de ~190/jour à ~7/jour est le balayage initial du catalogue qui se
+termine, plus ce rétrécissement — pas une régression.
+
+Conséquence de conception à connaître : **un client aux critères étroits
+rétrécit le catalogue pour tout le monde**, y compris pour le prochain inscrit
+qui voudrait le 77 ou le 95. Le repli « toute l'Île-de-France » ne s'applique
+qu'à zéro client actif. Élargir se fait en une ligne dans
+`active_scrape_zones()` — union des zones clients **et** du défaut — si l'on
+préfère un catalogue chaud d'avance à un crawl strictement à la demande.
+
 ## Les blocages, et ils ne sont pas techniques
 
 **0. La clé Composio — résolu.** La clé d'origine était en lecture seule. La
