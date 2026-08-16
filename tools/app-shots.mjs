@@ -17,6 +17,19 @@
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
 
+/**
+ * Wait for the app to be drawn, not for the network to go quiet.
+ *
+ * `networkidle` cannot be reached any more and that is correct behaviour: the
+ * app holds an open Realtime socket so a match landing while somebody is
+ * looking at the screen appears under their thumb. A socket that stays open is
+ * the feature; waiting for it to close is the bug.
+ */
+async function settled(page) {
+  await page.waitForSelector('#app .pm__view', { timeout: 15000 }).catch(() => {});
+  await page.waitForTimeout(1200);
+}
+
 const BASE = process.env.BASE || 'http://localhost:4321';
 const OUT = '.cache/app';
 const CHROME = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
@@ -94,15 +107,15 @@ for (const viewport of VIEWPORTS) {
       state.availabilitySavedAt = new Date(Date.now() - d * 86400000).toISOString();
       localStorage.setItem('prems.app.v1', JSON.stringify(state));
     }, days);
-    await page.reload({ waitUntil: 'networkidle' });
+    await page.reload({ waitUntil: 'domcontentloaded' });
   };
 
-  await page.goto(`${BASE}/app/`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE}/app/`, { waitUntil: 'domcontentloaded' });
   await page.evaluate((draft) => {
     localStorage.clear();
     localStorage.setItem('prems.onboarding.v1', JSON.stringify(draft));
   }, DRAFT);
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'domcontentloaded' });
 
   /* ---- the gate ------------------------------------------------------- */
   await page.waitForSelector('.pm-gate__title');
@@ -182,13 +195,13 @@ for (const viewport of VIEWPORTS) {
   // A goto that differs only by fragment is a same-document navigation - the
   // page keeps running with the state it booted on, and the rewrite above
   // would never be read. The reload is what makes it take effect.
-  await page.goto(`${BASE}/app/#visites`, { waitUntil: 'networkidle' });
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.goto(`${BASE}/app/#visites`, { waitUntil: 'domcontentloaded' });
+  await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForSelector('.pm-review', { timeout: 10000 });
   await shot('13-visites-retour-de-visite');
 
   /* ---- the pricing screen at the end of the flow ----------------------- */
-  await page.goto(`${BASE}/onboarding/#pricing`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE}/onboarding/#pricing`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('.ob-plan--hero', { timeout: 10000 });
   await shot('14-onboarding-pricing');
 

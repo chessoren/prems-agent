@@ -14,6 +14,8 @@
 import * as store from '../../lib/prems/store.js';
 import * as agent from '../../lib/prems/agent.js';
 import { PLANS, portalUrl, checkoutUrl, startCheckout } from '../../lib/prems/billing.js';
+import * as mailbox from '../../lib/prems/mailbox.js';
+import * as billing from '../../lib/prems/billing.js';
 import {
   h,
   appIcon,
@@ -374,10 +376,30 @@ function notificationsSection() {
 /* -------------------------------------------------------------------------
  * 5. Subscription
  * ------------------------------------------------------------------------- */
+/**
+ * What this person is entitled to, according to the database.
+ *
+ * It used to read `agent.get().plan` - a localStorage value written by the
+ * `?checkout=` parameter on the Stripe redirect, which anyone could set by
+ * typing the URL and which a real payer lost the moment they cleared their
+ * browser. The row written by the Stripe webhook is the only thing that can
+ * prove a payment, so it is the only thing this reads.
+ */
 function subscriptionSection() {
-  const state = agent.get();
+  const wrap = h('div', { class: 'pm-sub-wrap' });
+  wrap.replaceChildren(h('p', { class: 'pm-sub__pending' }, 'Vérification de ton abonnement…'));
+
+  billing
+    .current()
+    .then((subscription) => wrap.replaceChildren(subscriptionBody(subscription)))
+    .catch(() => wrap.replaceChildren(subscriptionBody({ isActive: false, plan: null })));
+
+  return wrap;
+}
+
+function subscriptionBody(subscription) {
   const draft = store.get();
-  const plan = state.plan ? PLANS[state.plan] : null;
+  const plan = subscription.isActive && subscription.plan ? PLANS[subscription.plan] : null;
   const portal = portalUrl();
 
   const manage = portal
@@ -455,6 +477,75 @@ function subscriptionSection() {
 /* -------------------------------------------------------------------------
  * The tab
  * ------------------------------------------------------------------------- */
+
+/**
+ * The mailbox, which is what turns the agent on.
+ *
+ * Prems writes to agencies from the client's own address and reads the answers
+ * there. Until this is connected the pipeline detects and matches but sends
+ * nothing - by design, and the copy says so plainly rather than letting someone
+ * believe applications are going out.
+ */
+function mailboxSection(ctx) {
+  const wrap = h('div', { class: 'pm-card' });
+
+  const render = (state) => {
+    const connected = state.gmail;
+
+    const action = h(
+      'button',
+      {
+        class: `ob-btn ${connected ? 'ob-btn--light' : 'ob-btn--accent'}`,
+        type: 'button',
+        onClick: async () => {
+          action.disabled = true;
+          action.replaceChildren(h('span', { class: 'ob-btn__inner' }, 'Ouverture de Google…'));
+          try {
+            await mailbox.connect('gmail');
+            action.replaceChildren(
+              h('span', { class: 'ob-btn__inner' }, 'En attente de ton autorisation…'),
+            );
+            const ok = await mailbox.waitForConnection('gmail');
+            if (ok) {
+              ctx.toast('Boîte connectée. Ton agent peut candidater.');
+              // The calendar rides along: a confirmed visit has to land
+              // somewhere, and asking twice a week later is asking twice.
+              mailbox.connect('googlecalendar')
+                .then(() => mailbox.waitForConnection('googlecalendar'))
+                .catch(() => {});
+              render(await mailbox.status());
+              ctx.refresh();
+              return;
+            }
+            ctx.toast('Autorisation non terminée. Tu peux réessayer.');
+          } catch {
+            ctx.toast('Connexion impossible pour l’instant.');
+          }
+          action.disabled = false;
+          render(state);
+        },
+      },
+      h('span', { class: 'ob-btn__inner' }, connected ? 'Reconnecter ma boîte' : 'Connecter ma boîte mail'),
+    );
+
+    wrap.replaceChildren(
+      h('h2', { class: 'pm-card__title' }, 'Boîte mail'),
+      h(
+        'p',
+        { class: 'pm-card__hint' },
+        connected
+          ? 'Connectée. Les candidatures partent de ton adresse et les réponses des agences arrivent chez toi — c’est là que l’agent les lit.'
+          : 'Tant que ta boîte n’est pas connectée, l’agent trouve les appartements mais n’envoie rien. Les candidatures partent de ton adresse, jamais de la nôtre.',
+      ),
+      action,
+    );
+  };
+
+  render({ gmail: false, calendar: false });
+  mailbox.status().then(render).catch(() => {});
+  return wrap;
+}
+
 export default function renderProfile(ctx) {
   const draft = store.get();
   const model = ctx.model;
@@ -508,6 +599,12 @@ export default function renderProfile(ctx) {
         body: () => solvencySection(model),
       },
       {
+        icon: 'chat',
+        label: 'Boîte mail',
+        hint: 'Ce qui autorise l’agent à candidater pour toi',
+        body: () => mailboxSection(ctx),
+      },
+      {
         icon: 'bell',
         label: 'Notifications',
         hint: 'Canaux et fréquence',
@@ -516,7 +613,7 @@ export default function renderProfile(ctx) {
       {
         icon: 'card',
         label: 'Abonnement',
-        hint: agent.get().plan ? PLANS[agent.get().plan]?.name : 'Aucune formule active',
+        hint: 'Formule et facturation',
         body: () => subscriptionSection(),
       },
     ]),

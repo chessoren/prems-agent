@@ -6,29 +6,26 @@
  * threads, and everything the person has done in response.
  *
  * ---------------------------------------------------------------------------
- * Where the data comes from, and what is honestly missing
+ * Where the data comes from
  * ---------------------------------------------------------------------------
- * The server side of the product - the scrapers, the outreach agent, the
- * interception of agency replies - is described in `docs/ONBOARDING.md` and
- * `docs/CLOUD-RUN.md`, and what exists today is the onboarding schema plus the
- * document service. There are no `matches`, `visits` or `messages` tables yet.
+ * From the database. `matches`, `applications`, `application_replies` and
+ * `calendar_events` are written by workers that run every minute in Cloud Run,
+ * whether or not anyone has the site open, and `live.js` reads them.
  *
- * So this module does two things at once, and keeps them clearly separated:
+ * This file was written before those tables existed, and until then it
+ * projected the agent's half of the model from the demo catalogue and a clock
+ * derived from each listing's id. That projection is still here, below
+ * `deriveProjected`, and it now serves exactly one case: somebody who has not
+ * finished the flow, so has no criteria and no rows. Anyone with a real feed
+ * gets the real one.
  *
- * - Everything the *person* does - dismissals, chosen slots, feedback, taking
- *   over a thread, notification preferences - is real state, persisted on the
- *   device, and is the part a server sync will simply take over.
- * - Everything the *agent* does is projected from the real listing catalogue
- *   and a deterministic clock anchored on the moment availability was saved.
- *   A match detected 4 minutes ago is 4 minutes old because the clock says so,
- *   not because a random number generator ran.
- *
- * The projection is not decoration. It is the contract the backend has to
- * fulfil: these statuses, in this order, with these timings. When the event
- * stream lands, `derive()` reads rows instead of computing them and nothing
- * above it changes.
+ * The split the projection was built around turned out to be the right one and
+ * survives unchanged: everything the *person* does - dismissals, chosen slots,
+ * feedback, read marks, notification preferences - stays on the device. That
+ * half was never fiction.
  */
 import * as store from './store.js';
+import * as live from './live.js';
 import { match as matchListings } from './listings.js';
 
 const KEY = 'prems.app.v1';
@@ -211,6 +208,24 @@ export const STATUS = {
     label: 'Refusé',
     tone: 'lost',
     detail: 'Pas retenu cette fois — l’agent continue sur les autres.',
+  },
+
+  /* Two states the real pipeline has and a projection never did. A message
+   * exists as a row before it leaves - queued behind a rate limit, or behind a
+   * mailbox that is not connected yet - and an agency can reply something that
+   * is neither a refusal nor a proposed slot. Showing "contact envoyé" for
+   * either would be a claim we cannot back. */
+  contact_en_cours: {
+    id: 'contact_en_cours',
+    label: 'Message en préparation',
+    tone: 'working',
+    detail: 'L’agent a rédigé la candidature. Départ imminent.',
+  },
+  reponse_recue: {
+    id: 'reponse_recue',
+    label: 'Réponse reçue',
+    tone: 'action',
+    detail: 'L’agence a répondu. À lire dans Messages.',
   },
 };
 
@@ -468,6 +483,20 @@ export function invalidate() {
  */
 export async function load() {
   if (cache) return cache;
+
+  // The real feed first, always.
+  //
+  // Everything below this point is the projection that stood in for a backend
+  // that did not exist when this file was written. It now does: the matcher
+  // runs every minute in Cloud Run and writes `matches`, whether or not anyone
+  // has the site open. The projection survives only as the answer for someone
+  // who has not finished the flow yet - no session, no criteria, no rows.
+  const real = await live.load();
+  if (real && real.matches.length > 0) {
+    cache = { listings: real.matches.map((m) => m.listing), poolSize: real.matches.length, live: real };
+    return cache;
+  }
+
   const draft = store.get();
   if (!draft.citySlug) {
     cache = { listings: [], poolSize: 0 };
@@ -494,6 +523,65 @@ export async function load() {
  * one found five minutes ago wins.
  */
 export function derive(now = Date.now()) {
+  if (cache?.live) return deriveLive(cache.live, now);
+  return deriveProjected(now);
+}
+
+/**
+ * The model, built from rows.
+ *
+ * Same shape as the projection below, because the tabs consume it and none of
+ * them should have to know which one they got. The difference is what the
+ * fields mean: `contactedAt` is when a message actually left, not when a hash
+ * said it would.
+ *
+ * What the person does stays local - dismissals, chosen slots, feedback, read
+ * marks - exactly as it was. That half was always real.
+ */
+function deriveLive(model, now) {
+  const dislikes = learnedDislikes();
+
+  const matches = model.matches
+    .filter((m) => !state.dismissed[m.id])
+    .map((m) => ({ ...m, action: actionFor(m.id), hasThread: Boolean(m.application) }));
+
+  const byId = new Map(matches.map((m) => [m.id, m]));
+  const visits = matches.filter((m) => m.visitAt);
+
+  const pendingSlots = matches.filter((m) => m.status === 'creneaux_proposes');
+  const toReview = visits.filter((m) => m.visitAt < now && !m.action.feedback);
+  const threads = matches
+    .filter((m) => m.hasThread)
+    .sort((a, b) => (b.repliedAt ?? b.contactedAt ?? 0) - (a.repliedAt ?? a.contactedAt ?? 0));
+
+  const unread = threads.filter((m) => {
+    const last = m.repliedAt;
+    return last && (!m.action.readAt || new Date(m.action.readAt).getTime() < last);
+  });
+
+  return {
+    matches,
+    pendingSlots,
+    visits,
+    toReview,
+    threads,
+    unread,
+    poolSize: byId.size,
+    dislikes,
+    // The agent is running the moment the pipeline has produced anything for
+    // this person, which is a fact about the database rather than about a
+    // button they pressed on this device.
+    started: true,
+    startedAt: state.availabilitySavedAt ? new Date(state.availabilitySavedAt).getTime() : null,
+    live: true,
+    badges: {
+      visites: pendingSlots.length + toReview.length,
+      messages: unread.length,
+    },
+  };
+}
+
+function deriveProjected(now = Date.now()) {
   const start = startedAt();
   const draft = store.get();
   const dislikes = learnedDislikes();

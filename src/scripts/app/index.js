@@ -20,6 +20,7 @@
 import * as agent from '../../lib/prems/agent.js';
 import * as store from '../../lib/prems/store.js';
 import * as billing from '../../lib/prems/billing.js';
+import * as live from '../../lib/prems/live.js';
 import { ensureSession } from '../../lib/prems/supabase.js';
 import { h, appIcon, countBadge, toast } from './ui.js';
 import renderMatches from './matches.js';
@@ -229,19 +230,26 @@ async function readCheckout() {
 }
 
 async function boot() {
-  // The account id has to be in hand before any checkout link is rendered.
-  await billing.warm();
-  readCheckout();
-
   const hash = location.hash.slice(1);
   currentTab = TABS.some((t) => t.id === hash) ? hash : 'accueil';
 
   // Paint immediately with whatever is known, then fill in the catalogue. The
   // first frame must not wait on a network call - the same rule the onboarding
   // applies to its results screen.
+  //
+  // This is load-bearing, not a preference: an earlier version of this function
+  // awaited the account lookup before painting, and on a network that could not
+  // reach Supabase the app rendered nothing at all rather than rendering its
+  // offline state.
   update({ force: true });
 
+  // Both are network calls, so both come after the first frame. `warm()` only
+  // has to finish before somebody can click a checkout button, and the click
+  // handler resolves the id again anyway.
+  billing.warm().catch(() => {});
   ensureSession().catch(() => {});
+  readCheckout();
+
   await agent.load();
   update({ force: true });
 
@@ -250,10 +258,25 @@ async function boot() {
    * that a phone left open on this screen is not kept awake by it. */
   setInterval(() => update(), 20_000);
 
+  /* A match landing while the person is on the screen.
+   *
+   * The pipeline runs on its own schedule and owes nothing to this tab being
+   * open, so the rows can change under it at any moment. Realtime is what turns
+   * that from a refresh-to-find-out into the thing the product actually sells:
+   * watching the agent work. The interval above only ages the labels. */
+  live.watch(async () => {
+    agent.invalidate();
+    await agent.load();
+    update({ force: true });
+  });
+
   // A tab left open all night is stale in a way the interval cannot fix fast
   // enough to matter; recompute the moment it comes back into view.
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) update();
+  document.addEventListener('visibilitychange', async () => {
+    if (document.hidden) return;
+    agent.invalidate();
+    await agent.load();
+    update({ force: true });
   });
 }
 
