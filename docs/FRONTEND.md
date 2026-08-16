@@ -220,13 +220,35 @@ const r = await fetch('https://backend.composio.dev/api/v3/connected_accounts/li
   body: JSON.stringify({ auth_config_id: 'ac_BDCvl8Std_Rq', user_id: userId }),
 });
 const { id, redirect_url } = await r.json();
-// rediriger le client vers redirect_url, puis au retour :
-await supabase.from('profiles').update({ gmail_account_id: id }).eq('id', userId);
+// rediriger le client vers redirect_url
+```
+
+`user_id` est l'uuid du client Prems, pas un compte d'exploitant : chaque
+utilisateur connecte **sa** boîte, et c'est de là que partent ses candidatures.
+
+**Au retour, vérifier avant d'écrire.** Le compte est créé en `INITIALIZING` dès
+la génération du lien, et ne passe `ACTIVE` que si le client va au bout de
+l'autorisation Google. Écrire l'identifiant sans vérifier arme le worker
+d'envoi contre une boîte qui n'a jamais été autorisée — la candidature échoue,
+retente, et finit en DLQ pour une raison qui n'a rien à voir.
+
+```ts
+// Route serveur — callback
+const a = await (await fetch(`https://backend.composio.dev/api/v3/connected_accounts/${id}`, {
+  headers: { 'x-api-key': process.env.COMPOSIO_API_KEY },
+})).json();
+
+if (a.status === 'ACTIVE') {
+  await supabase.from('profiles').update({ gmail_account_id: id }).eq('id', userId);
+} // sinon : laisser nul et reproposer le bouton
 ```
 
 Configurations existantes : **Gmail `ac_BDCvl8Std_Rq`**, **Google Calendar
 `ac_H4AoPOZxFKAL`**. Pour l'agenda, même appel puis
 `calendar_account_id`.
+
+Les liens d'autorisation expirent. Ils se génèrent à la demande, au clic — il
+n'y a jamais lieu d'en stocker un d'avance.
 
 Tant que `profiles.gmail_account_id` est nul, le pipeline **n'engage rien** :
 les matches restent `new` et attendent. C'est voulu — une version précédente

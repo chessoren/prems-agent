@@ -37,16 +37,23 @@ les deux recherches d'un même client.
 nouvelle exécute les outils et écrit les configurations ; elle est en Secret
 Manager et les jobs la montent. Le préflight passe.
 
-**1. Aucune boîte Gmail connectée — une action, deux liens.**
+**1. Aucun client n'a encore connecté sa boîte — et c'est au front de le
+permettre.**
 
-Les deux configurations existent : Gmail `ac_BDCvl8Std_Rq`, Google Calendar
-`ac_H4AoPOZxFKAL` (créée avec la nouvelle clé). Les liens d'autorisation sont
-générés ; il suffit de les suivre puis d'écrire l'identifiant du compte dans
-`profiles.gmail_account_id` / `calendar_account_id`. Voir `FRONTEND.md`,
-section « Connecter la boîte mail ».
+La connexion Gmail / Calendar est **par utilisateur de Prems**, déclenchée par
+un bouton dans l'interface : le produit envoie depuis la boîte du client et
+reçoit les réponses dans sa boîte. Pas de compte d'exploitant, pas de boîte
+partagée — ni techniquement, ni juridiquement souhaitable.
+
+Le backend est prêt et n'attend que ce bouton : les deux configurations
+existent (Gmail `ac_BDCvl8Std_Rq`, Google Calendar `ac_H4AoPOZxFKAL`), et le
+worker d'envoi comme le lecteur de boîte lisent `profiles.gmail_account_id`
+par utilisateur, à chaque passage. Câblage dans `FRONTEND.md`, section
+« Connecter la boîte mail du client ».
 
 Tant que c'est nul, le pipeline n'engage rien : les matches restent `new` et
-attendent.
+attendent. Autrement dit, jusqu'à la session front end, la machine **détecte et
+matche, sans jamais candidater**.
 
 **2. La joignabilité — à reconfirmer.** Mesurée à 15,7 % par l'e-mail direct.
 Le formulaire de contact de Bien'ici couvrirait 100 % du catalogue, mais mes

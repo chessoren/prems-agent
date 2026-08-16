@@ -5,63 +5,37 @@ seulement sont bloquantes.
 
 ---
 
-## Étape 1 — Connecter la boîte mail et l'agenda *(bloquant, 5 min)*
+## Étape 1 — Le bouton de connexion dans l'interface *(bloquant, session front end)*
 
 Rien ne peut partir sans. Tant que `profiles.gmail_account_id` est nul, le
 pipeline détecte et matche mais **n'engage rien** : les matches restent `new` et
 attendent, délibérément.
 
-### 1.1 Autoriser
+**C'est chaque utilisateur de Prems qui connecte sa propre boîte, depuis
+l'interface.** Jamais un compte d'exploitant, jamais une boîte partagée. Le
+produit envoie *depuis la boîte du client* et reçoit les réponses *dans sa
+boîte* — c'est ce qui fait qu'une agence reçoit un message d'une personne et
+non d'un robot, et c'est aussi ce qui rend l'interception des réponses possible
+sans rien intercepter chez personne d'autre.
 
-Les liens expirent — s'ils ne fonctionnent plus, en régénérer (voir 1.4).
+Le backend est prêt et attend seulement le bouton : `profiles.gmail_account_id`
+et `calendar_account_id` sont lus par le worker d'envoi et par le lecteur de
+boîte, par utilisateur, à chaque passage.
 
-| Service | Lien |
-|---|---|
-| Gmail | https://connect.composio.dev/link/lk_iRuj9oBIxqXE |
-| Google Calendar | https://connect.composio.dev/link/lk_5jAFcHMzWlih |
+Le câblage exact du bouton — route serveur, `auth_config_id`, écriture au
+retour — est dans `FRONTEND.md`, section « Connecter la boîte mail du client ».
+La clé Composio ne doit jamais atteindre le navigateur : le lien se génère
+côté serveur.
 
-Autorisez avec **le compte Google dont les candidatures doivent partir**. C'est
-depuis cette boîte que les agences recevront les messages, et c'est là que
-leurs réponses arriveront.
+Deux choses à demander en même temps que la boîte :
 
-### 1.2 Récupérer les identifiants de compte
+- `profiles.dossierfacile_url` — le plus gros levier d'acceptation d'une
+  candidature, envoyé en lien dans chaque message ;
+- une ligne dans `consents` (`auto_apply`, `mailbox_access`) — candidater au
+  nom de quelqu'un depuis sa boîte exige son instruction explicite et
+  prouvable.
 
-```bash
-curl -s -H "x-api-key: $COMPOSIO_API_KEY" \
-  "https://backend.composio.dev/api/v3/connected_accounts?limit=20" \
-  | python3 -c "
-import json,sys
-for a in json.load(sys.stdin).get('items',[]):
-    if a.get('status')=='ACTIVE' and (a.get('toolkit') or {}).get('slug') in ('gmail','googlecalendar'):
-        print(a['toolkit']['slug'], a['id'])
-"
-```
-
-### 1.3 Les écrire dans le profil
-
-```sql
-update public.profiles
-   set gmail_account_id    = 'ca_…',   -- l'identifiant gmail
-       calendar_account_id = 'ca_…',   -- l'identifiant googlecalendar
-       email               = 'vous@exemple.fr',
-       dossierfacile_url   = 'https://www.dossierfacile.logement.gouv.fr/...'
- where id = '<uuid du profil>';
-```
-
-`dossierfacile_url` n'est pas décoratif : c'est le plus gros levier
-d'acceptation d'une candidature, et il part en lien dans chaque message.
-
-### 1.4 Régénérer un lien expiré
-
-```bash
-curl -s -X POST -H "x-api-key: $COMPOSIO_API_KEY" -H "Content-Type: application/json" \
-  -d '{"auth_config_id":"ac_BDCvl8Std_Rq","user_id":"prems-owner"}' \
-  https://backend.composio.dev/api/v3/connected_accounts/link
-```
-
-Configs : Gmail `ac_BDCvl8Std_Rq`, Google Calendar `ac_H4AoPOZxFKAL`.
-
-### 1.5 Vérifier que ça part
+### Vérifier que ça part, une fois un premier client connecté
 
 Dans les deux minutes qui suivent (le job tourne toutes les 2 min) :
 
