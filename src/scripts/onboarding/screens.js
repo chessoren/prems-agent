@@ -18,6 +18,7 @@ import { upload, humanSize, validate } from '../../lib/prems/documents.js';
 import { client, ensureSession, isConfigured } from '../../lib/prems/supabase.js';
 import { scan as runScan, isAvailable as ocrAvailable } from '../../lib/prems/ocr.js';
 import { PLANS, checkoutUrl, startCheckout } from '../../lib/prems/billing.js';
+import * as mailbox from '../../lib/prems/mailbox.js';
 import { track } from '../../lib/prems/analytics.js';
 import {
   h,
@@ -1393,15 +1394,105 @@ const done = {
           pushBtn,
         ),
       ),
-      cta: { label: 'Choisir ma formule', arrow: true },
-      hint: 'Dernière étape — 30 secondes.',
+      cta: { label: 'Activer mon agent', arrow: true },
+      hint: 'Encore deux réglages — 30 secondes.',
+      onNext: () => 'connect',
+    };
+  },
+};
+
+
+/* =========================================================================
+ * Screen 14 - connecting the mailbox and the calendar
+ *
+ * This is where the product stops being a promise. Prems writes to agencies
+ * *from the client's own address* and reads the answers *in their inbox* -
+ * that is what makes an agent receive a message from a person rather than from
+ * a robot, and it is the only reason a reply can ever be intercepted. Without
+ * it the pipeline detects and matches and sends nothing, deliberately.
+ *
+ * It sits before the price rather than after because it is the last thing that
+ * can be honestly described as setting up the agent. Asking someone to
+ * authorise their inbox immediately *after* taking their money reads as a
+ * condition that was withheld.
+ *
+ * The calendar is asked for at the same time and not a week later: a confirmed
+ * visit has to land somewhere, and coming back to ask again is asking twice.
+ * ========================================================================= */
+const connect = {
+  progress: 96,
+  back: true,
+  build() {
+    const card = (service, title, detail) => {
+      const state = { connected: false };
+
+      const btn = button('Connecter', {
+        variant: 'accent',
+        onClick: async () => {
+          const label = btn.querySelector('.ob-btn__inner');
+          btn.disabled = true;
+          label.textContent = 'Ouverture de Google…';
+          try {
+            await mailbox.connect(service);
+            label.textContent = 'En attente de ton autorisation…';
+            const ok = await mailbox.waitForConnection(service);
+            state.connected = ok;
+            label.textContent = ok ? 'Connecté ✓' : 'Réessayer';
+            btn.disabled = ok;
+            if (ok) btn.classList.replace('ob-btn--accent', 'ob-btn--light');
+          } catch {
+            label.textContent = 'Réessayer';
+            btn.disabled = false;
+          }
+        },
+      });
+
+      return h(
+        'div',
+        { class: 'ob-connect__card' },
+        // Both are Google connections, so both carry the Google mark: the
+        // person is about to see Google's own consent screen, and matching the
+        // button to what opens is what stops that screen looking like a
+        // redirect they did not ask for.
+        h('div', { class: 'ob-connect__icon', html: ICONS.google }),
+        h('h2', { class: 'ob-connect__title' }, title),
+        h('p', { class: 'ob-connect__detail' }, detail),
+        btn,
+      );
+    };
+
+    return {
+      body: h(
+        'div',
+        { class: 'ob-connect' },
+        h('span', { class: 'ob__eyebrow' }, 'Dernier réglage'),
+        h('h1', { class: 'ob__title' }, 'Connecte ton agent à ta boîte.'),
+        h(
+          'p',
+          { class: 'ob__subtitle' },
+          'Les candidatures partent de ton adresse, jamais de la nôtre — c’est ce qui fait qu’une agence répond à une personne. Et les réponses arrivent chez toi, où l’agent les lit pour toi.',
+        ),
+        h(
+          'div',
+          { class: 'ob-connect__grid' },
+          card('gmail', 'Ta boîte mail', 'Pour écrire aux agences en ton nom et lire leurs réponses.'),
+          card('googlecalendar', 'Ton agenda', 'Pour poser la visite dès qu’une agence la confirme.'),
+        ),
+        h(
+          'p',
+          { class: 'ob-connect__trust' },
+          'Prems ne lit que les échanges liés à ta recherche. Tu peux révoquer l’accès à tout moment depuis ton compte Google.',
+        ),
+      ),
+      cta: { label: 'Continuer', arrow: true },
+      hint: 'Tu pourras aussi le faire plus tard depuis ton profil.',
       onNext: () => 'pricing',
     };
   },
 };
 
 /* =========================================================================
- * Screen 14 - pricing
+ * Screen 15 - pricing
  *
  * The flow used to end on the celebration, which meant it ended by asking
  * nothing. A completed file is the highest-intent moment this product will
@@ -1493,11 +1584,12 @@ const pricing = {
           { class: 'ob-pricing__trust' },
           'Sans engagement · Pas de frais cachés · Paiement sécurisé par Stripe',
         ),
-        h(
-          'a',
-          { class: 'ob-link ob-link--center', href: '/app' },
-          'Plus tard — voir mon espace',
-        ),
+        // No way past this screen without choosing.
+        //
+        // There used to be a "plus tard — voir mon espace" link here. It sent
+        // people to an app whose whole point - an agent applying on their
+        // behalf - is gated on an active subscription, so it delivered them to
+        // a product that could only show them apartments it would never act on.
       ),
     };
   },
@@ -1517,6 +1609,7 @@ export const SCREENS = {
   identity,
   address,
   done,
+  connect,
   pricing,
 };
 
@@ -1534,6 +1627,7 @@ export const ORDER = [
   'identity',
   'address',
   'done',
+  'connect',
   'pricing',
 ];
 

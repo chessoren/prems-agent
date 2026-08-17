@@ -108,13 +108,50 @@ function matchCard(match, ctx) {
   const status = STATUS[match.status];
   const action = ACTIONS[match.status];
 
+  /**
+   * The listing's own photograph, with the generated artwork underneath it.
+   *
+   * Stacked rather than swapped: the artwork paints immediately and the image
+   * covers it when it decodes, so the card never shows a grey rectangle. If the
+   * URL 404s - the portal drops files when a listing is withdrawn - the image
+   * removes itself and the artwork is simply what remains.
+   */
+  function photo(item) {
+    const art = artwork(photoHue(item.hue ?? item.rent_eur), 'pm-match__art');
+    const first = Array.isArray(item.photos) ? item.photos[0] : null;
+    if (!first) return art;
+
+    const img = h('img', {
+      class: 'pm-match__img',
+      src: first,
+      alt: '',
+      loading: 'lazy',
+      decoding: 'async',
+      // Hotlinked from the portal's CDN; do not leak which client is looking.
+      referrerpolicy: 'no-referrer',
+      onError: (event) => event.currentTarget.remove(),
+    });
+
+    return h('div', { class: 'pm-match__frame' }, art, img);
+  }
+
   const card = h(
     'article',
     { class: 'pm-match', 'data-status': match.status },
     h(
       'div',
       { class: 'pm-match__photo' },
-      artwork(photoHue(listing.hue ?? listing.rent_eur), 'pm-match__art'),
+      /* The real photograph, when the source gave us one.
+       *
+       * 808 of the 832 listings carry them, eight on average. The generated
+       * artwork stays as the fallback for the rest and for the moment before
+       * the image arrives - an empty grey box while a photo loads reads as a
+       * broken card, and a card that breaks is one nobody clicks.
+       *
+       * `onerror` matters as much as the src: these are hotlinked from the
+       * portal's CDN, and a photo pulled after a listing is withdrawn should
+       * degrade to the artwork rather than to a broken-image icon. */
+      photo(listing),
       h('span', { class: 'pm-match__score', title: 'Score de pertinence' }, `${match.score}%`),
     ),
     h(

@@ -484,19 +484,34 @@ export function invalidate() {
 export async function load() {
   if (cache) return cache;
 
-  // The real feed first, always.
+  // The real feed, and nothing else.
   //
-  // Everything below this point is the projection that stood in for a backend
-  // that did not exist when this file was written. It now does: the matcher
-  // runs every minute in Cloud Run and writes `matches`, whether or not anyone
-  // has the site open. The projection survives only as the answer for someone
-  // who has not finished the flow yet - no session, no criteria, no rows.
+  // The projection below this used to fill an empty app with the demo
+  // catalogue - flats that do not exist, carrying no real photographs and no
+  // agency anyone could be written to. Showing them to a paying client is
+  // worse than showing nothing: it promises apartments the agent will never
+  // apply for, and the first thing the person does is click one.
+  //
+  // Empty is the honest answer to "the agent has not found anything yet", and
+  // the empty state says exactly that. A real match appears the minute the
+  // matcher writes one - the tab is subscribed to the table.
   const real = await live.load();
-  if (real && real.matches.length > 0) {
-    cache = { listings: real.matches.map((m) => m.listing), poolSize: real.matches.length, live: real };
-    return cache;
-  }
+  cache = {
+    listings: (real?.matches ?? []).map((m) => m.listing),
+    poolSize: real?.matches.length ?? 0,
+    live: real ?? { matches: [], visits: [], threads: [], counts: { visites: 0, messages: 0 } },
+  };
+  return cache;
+}
 
+/**
+ * The demo projection, kept for one purpose only.
+ *
+ * It is what the pre-signup screens use to show a visitor what the product
+ * would find for them, from `demo_listings`. It is never what a signed-up
+ * client sees: `load()` above no longer falls back to it.
+ */
+export async function loadDemo() {
   const draft = store.get();
   if (!draft.citySlug) {
     cache = { listings: [], poolSize: 0 };

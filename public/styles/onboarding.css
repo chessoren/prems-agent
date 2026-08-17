@@ -2007,3 +2007,69 @@ body.ob-body {
  * windows looked calmer on the short screens and hid the call to action below
  * the fold on the long ones - and "which screens are short" is a function of
  * content the stylesheet cannot see. A reachable button beats a tidier one. */
+
+/* -------------------------------------------------------------------------
+ * Screen 14 — connecting the mailbox and the calendar
+ *
+ * Two cards of equal weight, side by side on anything wider than a phone.
+ * Neither is the hero: one without the other leaves the agent half-built, and
+ * making one look secondary is how it gets skipped.
+ * ------------------------------------------------------------------------- */
+.ob-connect__grid {
+  display: grid;
+  gap: 14px;
+  margin: 26px 0 20px;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 620px) {
+  .ob-connect__grid { grid-template-columns: 1fr 1fr; gap: 18px; }
+}
+
+.ob-connect__card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 20px 18px;
+  border: 1px solid var(--ob-border, rgba(15, 18, 25, 0.1));
+  border-radius: 18px;
+  background: var(--ob-surface, #fff);
+}
+
+.ob-connect__icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: rgba(15, 18, 25, 0.04);
+}
+
+.ob-connect__icon svg { width: 20px; height: 20px; }
+
+.ob-connect__title {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.ob-connect__detail {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--ob-muted, rgba(15, 18, 25, 0.62));
+  /* Pushes the button to the bottom so the two cards align whatever the
+   * length of their copy. */
+  flex: 1;
+}
+
+.ob-connect__card .ob-btn { width: 100%; }
+
+.ob-connect__trust {
+  font-size: 0.83rem;
+  line-height: 1.5;
+  color: var(--ob-muted, rgba(15, 18, 25, 0.62));
+  text-align: center;
+}
