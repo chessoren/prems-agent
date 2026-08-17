@@ -194,11 +194,20 @@ begin
 end $$;
 
 -- ===========================================================================
--- Backfill: the first message of every application already sent.
+-- Backfill: the first message of applications sent before this table existed.
 --
--- Bounded to applications that have one, and idempotent through the unique
--- constraint on (application_id, gmail_message_id) - which is why the synthetic
--- id below is stable rather than random.
+-- The `on conflict` clause is not the guard it looks like. It keys on
+-- (application_id, gmail_message_id), and the synthetic `seed-<id>` never
+-- collides with the real Gmail id the worker writes - so on the second
+-- `db:migrate` this inserted a duplicate of every message the worker had since
+-- recorded, and the Messages tab showed each one twice. Caught in the live
+-- table: three applications, six rows.
+--
+-- Which is the same defect 0011 had to be corrected for, made twice. The rule
+-- earned the hard way: a migration statement that repairs *data* must name the
+-- condition that makes it unnecessary, because it will run again.
+--
+-- Here that condition is simply "this application has no message yet".
 -- ===========================================================================
 insert into public.messages (
   user_id, application_id, listing_id, direction, author, subject, body,
@@ -207,5 +216,16 @@ insert into public.messages (
 select a.user_id, a.id, a.listing_id, 'out', 'agent', a.subject, a.body,
        'seed-' || a.id::text, 'sent', a.created_at, a.sent_at
 from public.applications a
-where a.body is not null and a.sent_at is not null
-on conflict (application_id, gmail_message_id) do nothing;
+where a.body is not null
+  and a.sent_at is not null
+  and not exists (select 1 from public.messages m where m.application_id = a.id);
+
+-- Remove the duplicates the unguarded version created: a seeded copy is only
+-- ever legitimate when it is the single message of its thread.
+delete from public.messages seeded
+ where seeded.gmail_message_id = 'seed-' || seeded.application_id::text
+   and exists (
+     select 1 from public.messages other
+     where other.application_id = seeded.application_id
+       and other.id <> seeded.id
+   );
