@@ -210,13 +210,17 @@ export async function sendDue(project: string, limit = 20): Promise<{ sent: numb
     const attempts = ((app.attempts as number) ?? 0) + 1;
 
     try {
-      const result = await sendEmail(profile.gmail_account_id as string, {
-        to: app.to_email as string,
-        subject: draft.subject,
-        body: `${draft.body}\n\n${listing?.url ?? ''}`.trim(),
-        bcc: (app.bcc_address as string) ?? 'prems@getmira.run',
-        attachmentUrl: (profile.dossierfacile_url as string) ?? null,
-      });
+      const result = await sendEmail(
+        profile.gmail_account_id as string,
+        {
+          to: app.to_email as string,
+          subject: draft.subject,
+          body: `${draft.body}\n\n${listing?.url ?? ''}`.trim(),
+          bcc: (app.bcc_address as string) ?? 'prems@getmira.run',
+          attachmentUrl: (profile.dossierfacile_url as string) ?? null,
+        },
+        app.user_id as string,
+      );
 
       if (result.successful === false) throw new Error(result.error ?? 'envoi refusé par Composio');
 

@@ -194,7 +194,7 @@ export async function watchInbox(userId: string, project: string): Promise<numbe
     `(${[...byEmail.keys()].map((e) => `from:${e}`).join(' OR ')}) ` +
     `after:${Math.floor(since.getTime() / 1000)}`;
 
-  const result = await fetchEmails(profile.gmail_account_id as string, query, 25);
+  const result = await fetchEmails(profile.gmail_account_id as string, query, 25, userId);
   const messages = (result.data?.messages ?? []) as Array<Record<string, any>>;
   let handled = 0;
 
@@ -259,15 +259,42 @@ export async function watchInbox(userId: string, project: string): Promise<numbe
         .select('id')
         .single();
 
-      const calendarAccount = (profile.calendar_account_id ?? profile.gmail_account_id) as string;
-      try {
-        const google = await createCalendarEvent(calendarAccount, {
-          summary: `Visite appartement`,
-          description: verdict.summary,
-          location: verdict.visitLocation ?? '',
-          startISO: start.toISOString(),
-          endISO: end.toISOString(),
+      // No falling back to the Gmail connection.
+      //
+      // It used to read `calendar_account_id ?? gmail_account_id`, on the
+      // assumption that one Google account is one Google account. It is not:
+      // the Gmail connection is authorised for Gmail scopes only, and
+      // GOOGLECALENDAR_CREATE_EVENT against it answers 403
+      // ACCESS_TOKEN_SCOPE_INSUFFICIENT. Verified against a real connected
+      // mailbox - the fallback could never have worked, only failed noisily on
+      // the day a first visit was confirmed.
+      //
+      // Our own `calendar_events` row is already written above, so the visit is
+      // never lost: only the copy in Google's calendar waits for that specific
+      // authorisation.
+      const calendarAccount = profile.calendar_account_id as string | null;
+      if (!calendarAccount) {
+        await logEvent({
+          userId,
+          type: 'calendar.not_connected',
+          subjectType: 'application',
+          subjectId: application.id as string,
+          payload: { starts_at: start.toISOString() },
         });
+      }
+      try {
+        if (!calendarAccount) throw new Error('agenda non connecté');
+        const google = await createCalendarEvent(
+          calendarAccount,
+          {
+            summary: `Visite appartement`,
+            description: verdict.summary,
+            location: verdict.visitLocation ?? '',
+            startISO: start.toISOString(),
+            endISO: end.toISOString(),
+          },
+          userId,
+        );
         const googleId = (google.data?.id ?? google.data?.event_id) as string | undefined;
         if (googleId && created?.id) {
           await client
