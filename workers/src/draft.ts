@@ -112,37 +112,52 @@ export function fallbackDraft(input: DraftInput): Draft {
 }
 
 export async function writeDraft(input: DraftInput, project: string): Promise<Draft> {
-  const prompt = `Tu écris un e-mail de candidature locative, en français, à une agence immobilière.
+  // Whether the income comfortably clears the bar agencies actually apply.
+  // Stated as a fact when it is true, never computed for the model to guess at.
+  const ratio =
+    input.monthlyIncomeEur && input.rentEur
+      ? Math.round((input.monthlyIncomeEur / input.rentEur) * 10) / 10
+      : null;
 
-Contraintes strictes :
-- 90 mots maximum, corps du message uniquement.
-- Ton neutre et direct. Aucun superlatif, aucune formule commerciale.
-- Mentionne concrètement le bien pour prouver que le message n'est pas un envoi de masse.
-- Mentionne la situation professionnelle et le revenu s'ils sont fournis, sobrement.
-- Termine par une demande de visite claire.
-- N'invente rien qui ne soit pas dans les données.
-- Ne mentionne ni Prems, ni aucun outil, ni aucune automatisation.
+  const prompt = `Tu écris, à la première personne, l'e-mail par lequel un particulier demande à visiter un logement. Il part de sa propre boîte mail et porte son nom : il doit se lire comme un message écrit à la main, un soir, par quelqu'un qui veut cet appartement.
 
-Données :
+Ce qui fait qu'une agence répond :
+- Elle reçoit quarante messages par jour et lit les trois premières lignes. 80 mots maximum.
+- Elle doit reconnaître SON annonce en une seconde : cite le type de bien, la ville et le loyer. Jamais le titre brut de l'annonce, surtout s'il est en majuscules — le recopier est la signature d'un envoi automatique.
+- Elle cherche un dossier solide. Donne la situation professionnelle et le revenu en une phrase de français normal, pas en liste.
+- Elle veut une date. Termine par une demande de visite, en te disant disponible en semaine comme le week-end.
+
+Interdits, chacun pour une raison :
+- Ne JAMAIS mentionner ce que le candidat n'a pas. Pas de garant, pas de CDI, revenu modeste : on ne le signale pas. Personne n'annonce sa propre faiblesse dans une candidature, et l'agence le demandera si elle veut le savoir.
+- Aucun superlatif, aucune formule commerciale ("bien d'exception", "je serais ravi"), aucune flatterie.
+- N'invente rien : pas de date précise, pas de profession, pas de détail absent des données.
+- Ne mentionne ni Prems, ni outil, ni automatisation, ni IA.
+- Ne mets aucun lien : le dossier et l'annonce sont ajoutés automatiquement sous ta signature.
+- Pas de "Madame, Monsieur," suivi d'un saut : commence par "Bonjour," — c'est ce qu'écrit un particulier.
+
+${input.hasDossier ? "Le candidat a un dossier DossierFacile vérifié, dont le lien est ajouté automatiquement après ta signature. Tu peux dire en une demi-phrase que le dossier complet est disponible, sans le décrire ni donner d'URL.\n" : ''}${ratio && ratio >= 3 ? `Le revenu représente ${ratio} fois le loyer, ce qui est au-dessus du seuil habituel : c'est un argument, formule-le simplement.\n` : ''}
+Données disponibles (tout champ absent ou nul n'existe pas et ne doit pas être évoqué) :
 ${JSON.stringify(
   {
     prenom: input.firstName,
     nom: input.lastName,
     situation: input.employment,
     revenu_mensuel_eur: input.monthlyIncomeEur,
-    garant: input.hasGuarantor,
+    // Présent uniquement s'il existe : son absence ne doit jamais atteindre le modèle.
+    ...(input.hasGuarantor ? { garant: true } : {}),
     bien: {
-      titre: input.title,
       ville: input.city,
       pieces: input.rooms,
-      surface_m2: input.surfaceM2,
-      loyer_eur: input.rentEur,
+      surface_m2: input.surfaceM2 ? Math.round(input.surfaceM2) : null,
+      loyer_mensuel_eur: input.rentEur,
     },
     agence: input.agencyName,
   },
   null,
   1,
 )}
+
+L'objet doit permettre de retrouver l'annonce sans ouvrir le message : type de bien, ville, et rien d'autre. Pas de nom de candidat dans l'objet.
 
 Réponds en JSON strict : {"subject": "...", "body": "..."}`;
 

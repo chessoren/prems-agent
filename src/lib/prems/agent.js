@@ -151,6 +151,15 @@ export function saveAvailability(slots) {
     // editing availability later must not restart the search from zero.
     availabilitySavedAt: state.availabilitySavedAt || new Date().toISOString(),
   });
+
+  // And to the database, which is the copy that matters.
+  //
+  // These slots are what lets the agent propose a date instead of asking the
+  // agency to propose one - the sentence that actually books a viewing. It runs
+  // at eight in the morning in Cloud Run and cannot read localStorage, so an
+  // availability that lives only on the device is an availability the agent
+  // does not have.
+  live.saveAvailability(slots).catch(() => {});
 }
 
 /** When the agent started working, in ms. */
@@ -484,19 +493,34 @@ export function invalidate() {
 export async function load() {
   if (cache) return cache;
 
-  // The real feed first, always.
+  // The real feed, and nothing else.
   //
-  // Everything below this point is the projection that stood in for a backend
-  // that did not exist when this file was written. It now does: the matcher
-  // runs every minute in Cloud Run and writes `matches`, whether or not anyone
-  // has the site open. The projection survives only as the answer for someone
-  // who has not finished the flow yet - no session, no criteria, no rows.
+  // The projection below this used to fill an empty app with the demo
+  // catalogue - flats that do not exist, carrying no real photographs and no
+  // agency anyone could be written to. Showing them to a paying client is
+  // worse than showing nothing: it promises apartments the agent will never
+  // apply for, and the first thing the person does is click one.
+  //
+  // Empty is the honest answer to "the agent has not found anything yet", and
+  // the empty state says exactly that. A real match appears the minute the
+  // matcher writes one - the tab is subscribed to the table.
   const real = await live.load();
-  if (real && real.matches.length > 0) {
-    cache = { listings: real.matches.map((m) => m.listing), poolSize: real.matches.length, live: real };
-    return cache;
-  }
+  cache = {
+    listings: (real?.matches ?? []).map((m) => m.listing),
+    poolSize: real?.matches.length ?? 0,
+    live: real ?? { matches: [], visits: [], threads: [], counts: { visites: 0, messages: 0 } },
+  };
+  return cache;
+}
 
+/**
+ * The demo projection, kept for one purpose only.
+ *
+ * It is what the pre-signup screens use to show a visitor what the product
+ * would find for them, from `demo_listings`. It is never what a signed-up
+ * client sees: `load()` above no longer falls back to it.
+ */
+export async function loadDemo() {
   const draft = store.get();
   if (!draft.citySlug) {
     cache = { listings: [], poolSize: 0 };
@@ -648,6 +672,26 @@ const formatTime = (ms) =>
   new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
 export function thread(match) {
+  // The real conversation, when there is one.
+  //
+  // Every message the agent sent, every reply the agency wrote, and anything
+  // the client typed themselves - all of it is rows now, written by the worker
+  // as it happens. What follows below is the invented transcript the app used
+  // before those rows existed, and it is reached only by the demo projection.
+  if (Array.isArray(match.messages) && match.messages.length > 0) {
+    return match.messages.map((m) => ({
+      id: m.id,
+      from: m.author === 'agency' ? 'agence' : m.author === 'client' ? 'moi' : 'agent',
+      at: Date.parse(m.sent_at || m.created_at),
+      body: m.body,
+      // A message still on its way out is shown as such rather than as sent:
+      // the client must never believe an agency has been written to when the
+      // send is still queued behind a rate limit.
+      pending: m.status === 'pending',
+      failed: m.status === 'failed',
+    }));
+  }
+
   const draft = store.get();
   const name = [draft.firstName, draft.lastName].filter(Boolean).join(' ') || 'le locataire';
   const income = draft.incomeCents ? Math.round(draft.incomeCents / 100) : null;

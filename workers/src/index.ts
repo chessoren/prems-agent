@@ -17,7 +17,7 @@ import { db, logEvent } from './db.js';
 import { backfillEmbeddings, backfillSearchEmbeddings, linkDuplicates } from './embed.js';
 import { ingest } from './ingest.js';
 import { matchPending } from './match.js';
-import { closeLostMatches, queueApplications, sendDue } from './apply.js';
+import { closeLostMatches, queueApplications, sendDue, sendOutbox } from './apply.js';
 import { watchAllInboxes } from './inbox.js';
 import { resolveAgencies } from './agency.js';
 
@@ -77,9 +77,12 @@ async function main(): Promise<void> {
     // before it. Closing them at match time is what burned 61 candidates for
     // applications that were never made.
     const closed = await closeLostMatches();
+    // Follow-ups leave on the same tick as first applications: a reply the
+    // client wrote in the interface must not wait for the morning inbox pass.
+    const outbox = await sendOutbox(Number(process.env.OUTBOX_LIMIT ?? 20));
     console.log(
       `apply: ${queued} mise(s) en file, ${sent} envoyée(s), ${failed} en échec, ` +
-        `${closed} non servi(s) clos, ${Date.now() - started} ms`,
+        `${outbox.sent} relance(s), ${closed} non servi(s) clos, ${Date.now() - started} ms`,
     );
     return;
   }

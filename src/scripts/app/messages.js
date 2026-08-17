@@ -14,6 +14,7 @@
  * or their first message contradicts the last one.
  */
 import * as agent from '../../lib/prems/agent.js';
+import * as live from '../../lib/prems/live.js';
 import { h, appIcon, statusBadge, sectionTitle, empty, toast, input } from './ui.js';
 
 /* Which thread is open, kept outside the render so a live update - a new
@@ -118,13 +119,37 @@ function conversation(match, ctx) {
     'aria-label': 'Ta réponse à l’agence',
   });
 
-  const send = () => {
+  /**
+   * Taking over the thread.
+   *
+   * The message goes into the same outbox the agent uses, so it leaves from the
+   * client's own mailbox, on the same Gmail thread, and the agency sees one
+   * continuous conversation rather than two. Writing a row is the whole action:
+   * the worker owns every send, and duplicating that here would be a second
+   * path to get wrong.
+   *
+   * When there is no application yet - a match nobody has written to - there is
+   * no thread to answer, so the local note is kept as before.
+   */
+  const send = async () => {
     const body = composerInput.value.trim();
     if (!body) return;
+    composerInput.value = '';
+
+    if (match.application?.id) {
+      const ok = await live.sendClientReply(match.application.id, match.listing.id, body);
+      ctx.toast(
+        ok
+          ? 'Message ajouté à la conversation — il part dans la minute.'
+          : 'Impossible d’envoyer pour l’instant. Réessaie.',
+      );
+      if (ok) ctx.refresh();
+      return;
+    }
+
     agent.act(match.id, {
       replies: [...replies, { at: new Date().toISOString(), body }],
     });
-    composerInput.value = '';
   };
 
   composerInput.addEventListener('keydown', (event) => {

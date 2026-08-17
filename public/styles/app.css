@@ -2189,3 +2189,40 @@ body.pm-body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* -------------------------------------------------------------------------
+ * The listing's real photograph
+ *
+ * Stacked over the generated artwork rather than replacing it, so the card is
+ * never a grey rectangle waiting on a network. The artwork is what shows while
+ * the image decodes, and what remains if the portal has dropped the file.
+ * ------------------------------------------------------------------------- */
+.pm-match__frame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.pm-match__frame .pm-match__art {
+  position: absolute;
+  inset: 0;
+}
+
+.pm-match__img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  /* Fades in over the artwork instead of snapping, which reads as a load
+   * rather than as a flicker. */
+  animation: pm-photo-in 220ms ease-out both;
+}
+
+@keyframes pm-photo-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}

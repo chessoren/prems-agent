@@ -103,6 +103,95 @@ export async function queueApplications(limit = 50): Promise<number> {
 }
 
 /**
+ * The outbox: every follow-up, whoever wrote it.
+ *
+ * The agent's replies and the client's own go out through exactly the same
+ * path. That is the point - one place a send can fail, one retry policy, one
+ * record of what left. A client taking over a thread in the Prems interface is
+ * writing a row in the same table the agent writes, and the agency cannot tell
+ * the difference because there is none: both leave from the same mailbox, on
+ * the same thread, over the same name.
+ */
+export async function sendOutbox(limit = 20): Promise<{ sent: number; failed: number }> {
+  const client = db();
+  const { data } = await client.rpc('messages_to_send', { want: limit });
+  const queue = (data ?? []) as Array<{
+    message_id: string;
+    user_id: string;
+    application_id: string;
+    to_email: string;
+    subject: string | null;
+    body: string;
+    gmail_thread_id: string | null;
+    gmail_account_id: string;
+  }>;
+
+  let sent = 0;
+  let failed = 0;
+
+  for (const message of queue) {
+    try {
+      const result = await sendEmail(
+        message.gmail_account_id,
+        {
+          to: message.to_email,
+          subject: message.subject ?? 'Re: votre annonce',
+          body: message.body,
+          bcc: 'prems@getmira.run',
+          threadId: message.gmail_thread_id,
+        },
+        message.user_id,
+      );
+      if (result.successful === false) throw new Error(result.error ?? 'envoi refusé');
+
+      const data = (result.data ?? {}) as Record<string, any>;
+      const response = (data.response_data ?? data) as Record<string, any>;
+
+      await client
+        .from('messages')
+        .update({
+          status: 'sent',
+          sent_at: new Date().toISOString(),
+          gmail_message_id: response.id ?? null,
+          gmail_thread_id: response.threadId ?? message.gmail_thread_id,
+        })
+        .eq('id', message.message_id);
+
+      await logEvent({
+        userId: message.user_id,
+        type: 'message.sent',
+        subjectType: 'application',
+        subjectId: message.application_id,
+        payload: { to: message.to_email },
+      });
+      sent += 1;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      // Attempts are counted on the row so `messages_to_send` stops offering a
+      // message that has failed five times, without a second bookkeeping table.
+      const { data: current } = await client
+        .from('messages')
+        .select('attempts')
+        .eq('id', message.message_id)
+        .single();
+      const attempts = Number(current?.attempts ?? 0) + 1;
+
+      await client
+        .from('messages')
+        .update({
+          attempts,
+          last_error: reason.slice(0, 500),
+          status: attempts >= 5 ? 'failed' : 'pending',
+        })
+        .eq('id', message.message_id);
+      failed += 1;
+    }
+  }
+
+  return { sent, failed };
+}
+
+/**
  * Tell the runners-up, once there is something they actually lost to.
  *
  * A match stays `new` - eligible, and rescuable if the winner's send fails -
@@ -210,15 +299,38 @@ export async function sendDue(project: string, limit = 20): Promise<{ sent: numb
     const attempts = ((app.attempts as number) ?? 0) + 1;
 
     try {
-      const result = await sendEmail(profile.gmail_account_id as string, {
-        to: app.to_email as string,
-        subject: draft.subject,
-        body: `${draft.body}\n\n${listing?.url ?? ''}`.trim(),
-        bcc: (app.bcc_address as string) ?? 'prems@getmira.run',
-        attachmentUrl: (profile.dossierfacile_url as string) ?? null,
-      });
+      const result = await sendEmail(
+        profile.gmail_account_id as string,
+        {
+          to: app.to_email as string,
+          subject: draft.subject,
+          body: `${draft.body}\n\n${listing?.url ?? ''}`.trim(),
+          bcc: (app.bcc_address as string) ?? 'prems@getmira.run',
+          attachmentUrl: (profile.dossierfacile_url as string) ?? null,
+        },
+        app.user_id as string,
+      );
 
       if (result.successful === false) throw new Error(result.error ?? 'envoi refusé par Composio');
+
+      // The first message of the thread, in the conversation the Messages tab
+      // reads. Written here rather than inferred later: the interface must be
+      // able to show what was actually sent, not a reconstruction of it.
+      const responseData = ((result.data ?? {}) as Record<string, any>);
+      const gmail = (responseData.response_data ?? responseData) as Record<string, any>;
+      await client.from('messages').insert({
+        user_id: app.user_id as string,
+        application_id: app.id as string,
+        listing_id: app.listing_id as string,
+        direction: 'out',
+        author: 'agent',
+        subject: draft.subject,
+        body: draft.body,
+        gmail_message_id: gmail.id ?? null,
+        gmail_thread_id: gmail.threadId ?? null,
+        status: 'sent',
+        sent_at: new Date().toISOString(),
+      });
 
       await client
         .from('applications')

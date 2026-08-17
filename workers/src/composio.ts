@@ -36,15 +36,33 @@ export interface ToolResult {
   error?: string;
 }
 
-/** Execute one Composio tool against one connected account. */
+/**
+ * Execute one Composio tool against one connected account.
+ *
+ * `user_id` is not optional, whatever the shape of the object suggests. Sending
+ * only `connected_account_id` is answered with a 400 and
+ * `ActionExecute_ConnectedAccountEntityIdRequired` - which means every
+ * application would have failed, retried five times on a growing backoff, and
+ * dead-lettered, on a fault no retry could ever fix.
+ *
+ * Found by sending a real message through a real connected mailbox rather than
+ * by reading the code, which had looked correct since it was written. It is the
+ * same value we set when the link was created, so it is always the Prems
+ * account uuid.
+ */
 export async function execute(
   slug: string,
   connectedAccountId: string,
   args: Record<string, unknown>,
+  userId?: string | null,
 ): Promise<ToolResult> {
   return call<ToolResult>(`/tools/execute/${slug}`, {
     method: 'POST',
-    body: JSON.stringify({ connected_account_id: connectedAccountId, arguments: args }),
+    body: JSON.stringify({
+      connected_account_id: connectedAccountId,
+      ...(userId ? { user_id: userId } : {}),
+      arguments: args,
+    }),
   });
 }
 
@@ -96,9 +114,15 @@ export interface SendArgs {
   /** Prems is blind-copied so replies can be classified without reading the rest of the inbox. */
   readonly bcc?: string;
   readonly attachmentUrl?: string | null;
+  /** Reply on an existing Gmail thread instead of opening a new one. */
+  readonly threadId?: string | null;
 }
 
-export async function sendEmail(connectedAccountId: string, args: SendArgs): Promise<ToolResult> {
+export async function sendEmail(
+  connectedAccountId: string,
+  args: SendArgs,
+  userId?: string | null,
+): Promise<ToolResult> {
   // The dossier travels as a link, never as an attachment. DossierFacile is the
   // French state's own verified tenancy file: a link is what agencies already
   // recognise, it stays current if the client updates it, and it keeps the
@@ -107,13 +131,21 @@ export async function sendEmail(connectedAccountId: string, args: SendArgs): Pro
     ? `${args.body}\n\nMon dossier de location (DossierFacile, vérifié) :\n${args.attachmentUrl}`
     : args.body;
 
-  return execute('GMAIL_SEND_EMAIL', connectedAccountId, {
-    recipient_email: args.to,
-    subject: args.subject,
-    body,
-    ...(args.bcc ? { bcc: [args.bcc] } : {}),
-    is_html: false,
-  });
+  return execute(
+    'GMAIL_SEND_EMAIL',
+    connectedAccountId,
+    {
+      recipient_email: args.to,
+      subject: args.subject,
+      body,
+      ...(args.bcc ? { bcc: [args.bcc] } : {}),
+      // Without this every follow-up opens a new thread, and the agent has to
+      // reconcile four separate conversations about one apartment.
+      ...(args.threadId ? { thread_id: args.threadId } : {}),
+      is_html: false,
+    },
+    userId,
+  );
 }
 
 /** Recent messages, for the reply watcher. */
@@ -121,12 +153,14 @@ export async function fetchEmails(
   connectedAccountId: string,
   query: string,
   max = 25,
+  userId?: string | null,
 ): Promise<ToolResult> {
-  return execute('GMAIL_FETCH_EMAILS', connectedAccountId, {
-    query,
-    max_results: max,
-    verbose: true,
-  });
+  return execute(
+    'GMAIL_FETCH_EMAILS',
+    connectedAccountId,
+    { query, max_results: max, verbose: true },
+    userId,
+  );
 }
 
 export async function createCalendarEvent(
@@ -138,16 +172,22 @@ export async function createCalendarEvent(
     startISO: string;
     endISO: string;
   },
+  userId?: string | null,
 ): Promise<ToolResult> {
-  return execute('GOOGLECALENDAR_CREATE_EVENT', connectedAccountId, {
-    summary: event.summary,
-    description: event.description ?? '',
-    location: event.location ?? '',
-    start_datetime: event.startISO,
-    event_duration_hour: 0,
-    event_duration_minutes: Math.max(
-      15,
-      Math.round((Date.parse(event.endISO) - Date.parse(event.startISO)) / 60000),
-    ),
-  });
+  return execute(
+    'GOOGLECALENDAR_CREATE_EVENT',
+    connectedAccountId,
+    {
+      summary: event.summary,
+      description: event.description ?? '',
+      location: event.location ?? '',
+      start_datetime: event.startISO,
+      event_duration_hour: 0,
+      event_duration_minutes: Math.max(
+        15,
+        Math.round((Date.parse(event.endISO) - Date.parse(event.startISO)) / 60000),
+      ),
+    },
+    userId,
+  );
 }
