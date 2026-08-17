@@ -114,6 +114,8 @@ export interface SendArgs {
   /** Prems is blind-copied so replies can be classified without reading the rest of the inbox. */
   readonly bcc?: string;
   readonly attachmentUrl?: string | null;
+  /** Reply on an existing Gmail thread instead of opening a new one. */
+  readonly threadId?: string | null;
 }
 
 export async function sendEmail(
@@ -137,6 +139,9 @@ export async function sendEmail(
       subject: args.subject,
       body,
       ...(args.bcc ? { bcc: [args.bcc] } : {}),
+      // Without this every follow-up opens a new thread, and the agent has to
+      // reconcile four separate conversations about one apartment.
+      ...(args.threadId ? { thread_id: args.threadId } : {}),
       is_html: false,
     },
     userId,

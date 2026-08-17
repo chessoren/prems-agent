@@ -116,7 +116,7 @@ export async function load(now = Date.now()) {
     const session = await ensureSession();
     if (!session) return null;
 
-    const [matchRes, appRes, replyRes, visitRes] = await Promise.all([
+    const [matchRes, appRes, replyRes, visitRes, msgRes] = await Promise.all([
       supabase.from('matches').select(SELECT).order('created_at', { ascending: false }).limit(200),
       supabase
         .from('applications')
@@ -133,6 +133,11 @@ export async function load(now = Date.now()) {
         .select('id, listing_id, application_id, title, location, starts_at, ends_at, google_event_id')
         .order('starts_at', { ascending: true })
         .limit(100),
+      supabase
+        .from('messages')
+        .select('id, application_id, listing_id, direction, author, subject, body, status, created_at, sent_at')
+        .order('created_at', { ascending: true })
+        .limit(500),
     ]);
 
     const matches = matchRes.data ?? [];
@@ -141,6 +146,14 @@ export async function load(now = Date.now()) {
     const applications = appRes.data ?? [];
     const allReplies = replyRes.data ?? [];
     const visits = visitRes.data ?? [];
+    const allMessages = msgRes.data ?? [];
+
+    const messagesByApp = new Map();
+    for (const message of allMessages) {
+      const list = messagesByApp.get(message.application_id) ?? [];
+      list.push(message);
+      messagesByApp.set(message.application_id, list);
+    }
 
     const appByMatch = new Map(applications.map((a) => [a.match_id, a]));
     const repliesByApp = new Map();
@@ -176,6 +189,7 @@ export async function load(now = Date.now()) {
           visit,
           application,
           replies,
+          messages: application ? (messagesByApp.get(application.id) ?? []) : [],
           status: lifecycle({ match: row, application, replies, visit }, now),
           skippedReason: row.skipped_reason ?? null,
         };
@@ -185,18 +199,66 @@ export async function load(now = Date.now()) {
     return {
       matches: projected,
       visits: projected.filter((m) => m.visitAt),
-      threads: projected.filter((m) => m.application),
+      threads: projected.filter((m) => m.messages.length > 0),
       counts: {
         visites: projected.filter(
           (m) => m.status === 'creneaux_proposes' || m.status === 'visite_confirmee',
         ).length,
-        messages: projected.filter((m) => m.replies.length > 0).length,
+        messages: projected.filter((m) =>
+          m.messages.some((x) => x.direction === 'in'),
+        ).length,
       },
     };
   } catch {
     // A read failure must not blank the app; the caller keeps what it had.
     return null;
   }
+}
+
+/**
+ * Save the weekly availability where the agent can read it.
+ *
+ * The interface keeps its own copy for instant rendering; this is the one the
+ * worker uses. RLS scopes the update to the caller's own profile.
+ */
+export async function saveAvailability(slots) {
+  const supabase = client();
+  if (!supabase) return false;
+  const session = await ensureSession();
+  if (!session?.user?.id) return false;
+
+  const { error } = await supabase
+    .from('profiles')
+    .update({ availability: slots, availability_saved_at: new Date().toISOString() })
+    .eq('id', session.user.id);
+  return !error;
+}
+
+/**
+ * Add the client's own message to a thread.
+ *
+ * Written as a row, not sent from here: the worker owns every outgoing
+ * message, so a reply typed in the interface leaves through exactly the path
+ * the agent's own replies use - same mailbox, same Gmail thread, same retry.
+ * The RLS policy allows only `direction: out`, `author: client`, `status:
+ * pending`, on an application that belongs to the caller.
+ */
+export async function sendClientReply(applicationId, listingId, body) {
+  const supabase = client();
+  if (!supabase) return false;
+  const session = await ensureSession();
+  if (!session?.user?.id) return false;
+
+  const { error } = await supabase.from('messages').insert({
+    user_id: session.user.id,
+    application_id: applicationId,
+    listing_id: listingId,
+    direction: 'out',
+    author: 'client',
+    body,
+    status: 'pending',
+  });
+  return !error;
 }
 
 /**
@@ -216,6 +278,7 @@ export function watch(onChange) {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'matches' }, onChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'applications' }, onChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'calendar_events' }, onChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, onChange)
     .subscribe();
 
   return () => supabase.removeChannel(channel);

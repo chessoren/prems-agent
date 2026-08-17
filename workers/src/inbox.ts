@@ -21,6 +21,7 @@ import { createSign } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { db, logEvent } from './db.js';
 import { canExecute, createCalendarEvent, fetchEmails } from './composio.js';
+import { writeReply, readableAvailability } from './negotiate.js';
 
 const LOCATION = 'europe-west9';
 const MODEL = 'gemini-2.5-flash-lite';
@@ -162,13 +163,126 @@ Réponds en JSON strict :
   }
 }
 
+
+/**
+ * Answer the agency, on the client's behalf, within stated limits.
+ *
+ * Queued into `messages` rather than sent from here. One outbox means one place
+ * a send can fail, one retry policy, and one thread in the interface - and it
+ * makes a reply the client writes themselves indistinguishable, on the way out,
+ * from one the agent wrote.
+ *
+ * Three refusals to act, each with a cost behind it:
+ *  - A refusal ends the thread. Arguing with an agency that has said no is how
+ *    a client's own address stops being delivered.
+ *  - A capped number of agent replies per thread. A negotiation that loops is
+ *    worse than one that stops.
+ *  - Nothing at all if the operator has turned autonomous replies off.
+ */
+async function maybeReply(args: {
+  client: ReturnType<typeof db>;
+  userId: string;
+  project: string;
+  application: Record<string, any>;
+  verdict: Classification;
+  profile: Record<string, any>;
+  agencyMessage: string;
+  threadId: string | null;
+  subject: string;
+}): Promise<void> {
+  const { client, userId, project, application, verdict, profile } = args;
+
+  if (verdict.kind === 'refused') return;
+
+  const { data: cfg } = await client
+    .from('settings')
+    .select('agent_replies_enabled, max_agent_replies_per_thread')
+    .eq('id', 1)
+    .single();
+  if (!cfg?.agent_replies_enabled) return;
+
+  const { data: already } = await client.rpc('agent_reply_count', {
+    p_application_id: application.id as string,
+  });
+  if (Number(already ?? 0) >= Number(cfg.max_agent_replies_per_thread ?? 4)) {
+    await logEvent({
+      userId,
+      type: 'reply.handed_back',
+      subjectType: 'application',
+      subjectId: application.id as string,
+      payload: { reason: 'plafond de relances atteint' },
+    });
+    return;
+  }
+
+  // The thread so far, so the reply does not repeat what has already been said.
+  const { data: history } = await client
+    .from('messages')
+    .select('author, body')
+    .eq('application_id', application.id as string)
+    .order('created_at', { ascending: true })
+    .limit(8);
+
+  const { data: listing } = await client
+    .from('listings')
+    .select('city, rooms, total_rent_eur')
+    .eq('id', application.listing_id as string)
+    .maybeSingle();
+
+  const body = await writeReply(
+    {
+      agencyMessage: args.agencyMessage,
+      history: (history ?? []).map((m) => `${m.author}: ${String(m.body).slice(0, 600)}`),
+      availability: (profile.availability as string[]) ?? [],
+      firstName: profile.first_name as string | null,
+      lastName: profile.last_name as string | null,
+      city: (listing?.city as string) ?? null,
+      rooms: (listing?.rooms as number) ?? null,
+      rentEur: (listing?.total_rent_eur as number) ?? null,
+      hasDossier: Boolean(profile.dossierfacile_url),
+      employment: (profile.employment_status as string) ?? null,
+      monthlyIncomeEur: profile.monthly_income_cents
+        ? Math.round((profile.monthly_income_cents as number) / 100)
+        : null,
+      kind: verdict.kind,
+    },
+    project,
+  );
+  if (!body) return;
+
+  await client.from('messages').insert({
+    user_id: userId,
+    application_id: application.id as string,
+    listing_id: application.listing_id as string,
+    direction: 'out',
+    author: 'agent',
+    subject: args.subject.startsWith('Re:') ? args.subject : `Re: ${args.subject}`,
+    body,
+    gmail_thread_id: args.threadId,
+    status: 'pending',
+  });
+
+  await logEvent({
+    userId,
+    type: 'reply.sent_by_agent',
+    subjectType: 'application',
+    subjectId: application.id as string,
+    payload: {
+      kind: verdict.kind,
+      // Recorded so "why did it propose Tuesday?" has an answer that is not a
+      // guess about what the model was thinking.
+      availability: readableAvailability((profile.availability as string[]) ?? []),
+    },
+  });
+}
+
 /** Read one client's replies, classify them, and record what they mean. */
 export async function watchInbox(userId: string, project: string): Promise<number> {
   const client = db();
 
   const { data: profile } = await client
     .from('profiles')
-    .select('gmail_account_id, calendar_account_id, inbox_last_checked_at')
+    .select('gmail_account_id, calendar_account_id, inbox_last_checked_at, availability, first_name, last_name, dossierfacile_url, employment_status, monthly_income_cents')
     .eq('id', userId)
     .maybeSingle();
   if (!profile?.gmail_account_id) return 0;
@@ -232,10 +346,38 @@ export async function watchInbox(userId: string, project: string): Promise<numbe
       classifier: MODEL,
     });
 
+    // The conversation, as the Messages tab reads it. Recorded before anything
+    // is decided about it: a message that arrived is a fact, whatever we go on
+    // to make of it.
+    await client.from('messages').insert({
+      user_id: userId,
+      application_id: application.id as string,
+      listing_id: application.listing_id as string,
+      direction: 'in',
+      author: 'agency',
+      subject: String(msg.subject ?? '').slice(0, 500),
+      body: String(msg.messageText ?? msg.snippet ?? '').slice(0, 20000),
+      gmail_message_id: messageId || null,
+      gmail_thread_id: String(msg.threadId ?? '') || null,
+      status: 'received',
+    });
+
     await client
       .from('applications')
       .update({ status: verdict.kind === 'visit_offered' ? 'visit_booked' : 'replied' })
       .eq('id', application.id as string);
+
+    // Answer it, unless it was a refusal or the thread has gone on too long.
+    //
+    // Queued rather than sent from here: it goes into the same outbox the
+    // client's own replies use, so there is exactly one path out of this
+    // system and one place where a send can fail.
+    await maybeReply({
+      client, userId, project, application, verdict, profile,
+      agencyMessage: String(msg.messageText ?? msg.snippet ?? ''),
+      threadId: String(msg.threadId ?? '') || null,
+      subject: String(msg.subject ?? ''),
+    });
 
     if (verdict.kind === 'visit_offered' && verdict.visitStartISO) {
       const start = new Date(verdict.visitStartISO);
