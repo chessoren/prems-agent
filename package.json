@@ -38,6 +38,7 @@
   },
   "homepage": "https://github.com/chessoren/prems-landing-page#readme",
   "devDependencies": {
+    "@types/node": "^24.10.1",
     "cheerio": "^1.2.0",
     "pixelmatch": "^7.2.0",
     "playwright": "^1.62.1",
@@ -45,11 +46,11 @@
     "postcss": "^8.5.26",
     "prettier": "^3.9.6",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.4",
-    "@types/node": "^24.10.1"
+    "vitest": "^3.2.4"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.2",
+    "@vercel/analytics": "^2.0.1",
     "astro": "^5.18.2"
   },
   "type": "module",
