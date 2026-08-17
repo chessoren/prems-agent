@@ -5,6 +5,8 @@
  * Holds the <head>, the global stylesheets, and the tiny runtime that replaces
  * Framer's React bundle. Page-specific styles are imported by the page itself.
  */
+import Analytics from '@vercel/analytics/astro';
+
 // Stylesheets are imported by each page, in an explicit order, so that the
 // cascade matches the original document exactly.
 
@@ -75,6 +77,8 @@ const ogImage = SITE ? new URL(ogImagePath, SITE).href : ogImagePath;
     <div id="main">
       <slot />
     </div>
+
+    <Analytics />
 
     {
       appear && (
