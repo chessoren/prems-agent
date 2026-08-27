@@ -151,6 +151,61 @@ plausible — la file en contenait encore 320 — mais c'est une inférence, pas
 lecture directe. La ligne `match: … ms` loggée par le job donnerait le chiffre
 exact ; elle n'apparaît pas dans le filtre de logs utilisé.
 
+### 3 bis. Donner l'accès GCP à un agent ou à une CI
+
+Le besoin revient : une machine qui n'est pas la vôtre doit pouvoir vérifier les
+modèles, lire les logs, déployer un job. Elle ne peut pas passer par un
+navigateur, donc `gcloud auth login` est hors de portée. Ce qu'elle peut
+recevoir, c'est une variable d'environnement.
+
+**Créer un compte de service dédié**, jamais le vôtre :
+
+```bash
+PROJECT=gen-lang-client-0781599139
+SA=prems-agent@$PROJECT.iam.gserviceaccount.com
+
+gcloud iam service-accounts create prems-agent \
+  --project=$PROJECT --display-name="Agent / CI"
+
+for ROLE in aiplatform.user run.admin logging.viewer \
+            artifactregistry.writer cloudbuild.builds.editor cloudscheduler.admin; do
+  gcloud projects add-iam-policy-binding $PROJECT \
+    --member="serviceAccount:$SA" --role="roles/$ROLE"
+done
+
+# Pour que les jobs déployés puissent endosser l'identité des workers.
+gcloud iam service-accounts add-iam-policy-binding \
+  prems-workers@$PROJECT.iam.gserviceaccount.com \
+  --project=$PROJECT --member="serviceAccount:$SA" \
+  --role=roles/iam.serviceAccountUser
+
+gcloud iam service-accounts keys create /tmp/prems-agent.json \
+  --iam-account=$SA --project=$PROJECT
+```
+
+**Transmettre la clé comme variable d'environnement**, pas comme fichier :
+`GCP_SERVICE_ACCOUNT_JSON` = le contenu entier de `/tmp/prems-agent.json`.
+`tools/lib/gcp-credentials.mjs` l'écrit dans un fichier 0600 hors du dépôt et
+pointe ADC dessus, donc `npm run preflight`, `npm run gcp:models` et
+`google-auth-library` fonctionnent sans autre réglage.
+
+**Ce que ça n'ouvre pas**, et c'est volontaire : ni facturation, ni IAM, ni
+Secret Manager. Un agent qui doit lire un secret a besoin d'un rôle de plus, à
+accorder au cas par cas plutôt qu'à l'avance.
+
+**Révoquer, à la fin :**
+
+```bash
+gcloud iam service-accounts keys list --iam-account=$SA --project=$PROJECT
+gcloud iam service-accounts keys delete <KEY_ID> --iam-account=$SA --project=$PROJECT
+# ou, plus radical et plus sûr :
+gcloud iam service-accounts delete $SA --project=$PROJECT
+```
+
+Mieux encore, le jour où l'appelant peut porter un jeton OIDC : **Workload
+Identity Federation**, qui supprime le fichier de clé plutôt que de le faire
+tourner. C'est déjà noté en §1 pour GitHub Actions ; c'est la même réponse ici.
+
 ### 4. Le modèle et sa région — à revérifier avant tout déploiement
 
 Les modèles sont nommés une seule fois, dans `workers/src/agent.ts`. Aucun autre

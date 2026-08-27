@@ -17,8 +17,11 @@
  *   gcloud services enable aiplatform.googleapis.com --project <id>
  */
 import { loadEnv } from './supabase/env.mjs';
+import { ensureCredentials } from './lib/gcp-credentials.mjs';
 
 const env = loadEnv();
+// A key supplied as an env var becomes a file ADC can read, once.
+ensureCredentials(env);
 const value = (key, fallback) => process.env[key] ?? env[key] ?? fallback;
 
 const PROJECT = value('GCP_PROJECT_ID');

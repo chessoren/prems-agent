@@ -15,8 +15,11 @@
  */
 import { execFileSync } from 'node:child_process';
 import { loadEnv } from './supabase/env.mjs';
+import { ensureCredentials } from './lib/gcp-credentials.mjs';
 
 const env = loadEnv();
+// A key supplied as an env var becomes a file ADC can read, once.
+ensureCredentials(env);
 const get = (key) => process.env[key] ?? env[key] ?? '';
 
 const PROJECT = get('GCP_PROJECT_ID');
