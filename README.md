@@ -178,6 +178,7 @@ Full first-run procedure, IAM roles and the checks to run before deploying:
 ```bash
 npm run ci                  # typecheck + tests + build
 npm run gcp:models          # which model answers, from which region
+npm run preflight           # is the product actually armed, link by link
 ```
 
 ## What does not work yet
@@ -185,11 +186,13 @@ npm run gcp:models          # which model answers, from which region
 Stated here rather than discovered by a reader, because the gap is the
 interesting part.
 
-- **No client has connected a mailbox yet.** The backend is ready and the
-  Composio configurations exist; what is missing is the button in the interface
-  that starts the per-user OAuth. Until then `prems-apply` queues and
-  `prems-inbox` has never run against a real inbox. This is the one thing
-  standing between the pipeline and an end-to-end demonstration.
+- **No client has connected a mailbox yet — and no code is missing for it.**
+  The button, the browser call, the deployed edge function and the workers that
+  read `profiles.gmail_account_id` are all in place; `npm run preflight` checks
+  each link and names the one that fails. What is missing is a person clicking
+  through Google's consent screen, which no amount of server access replaces.
+  Until then `prems-apply` queues and `prems-inbox` has never run against a real
+  inbox — the one thing between the pipeline and an end-to-end demonstration.
 - **Reachability is 10–18%.** Bien'ici publishes a phone number and withholds
   the e-mail; the form behind an account *is* their product. `prems-agencies`
   resolves an address per agency to cover the rest, and it is still running its

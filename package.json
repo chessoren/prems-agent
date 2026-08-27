@@ -25,7 +25,8 @@
     "ci": "npm run typecheck && npm run test && npm run build",
     "db:migrate": "NODE_USE_ENV_PROXY=1 node tools/supabase/migrate.mjs",
     "db:inspect": "NODE_USE_ENV_PROXY=1 node tools/supabase/inspect.mjs",
-    "gcp:models": "NODE_USE_ENV_PROXY=1 node tools/gcp-models.mjs"
+    "gcp:models": "NODE_USE_ENV_PROXY=1 node tools/gcp-models.mjs",
+    "preflight": "NODE_USE_ENV_PROXY=1 node tools/preflight.mjs"
   },
   "repository": {
     "type": "git",

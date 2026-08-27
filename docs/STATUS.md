@@ -96,18 +96,34 @@ préfère un catalogue chaud d'avance à un crawl strictement à la demande.
 nouvelle exécute les outils et écrit les configurations ; elle est en Secret
 Manager et les jobs la montent. Le préflight passe.
 
-**1. Aucun client n'a encore connecté sa boîte — et c'est au front de le
-permettre.**
+**1. Aucun client n'a encore connecté sa boîte — et il n'y a plus rien à
+construire pour ça.**
 
-La connexion Gmail / Calendar est **par utilisateur de Prems**, déclenchée par
-un bouton dans l'interface : le produit envoie depuis la boîte du client et
-reçoit les réponses dans sa boîte. Pas de compte d'exploitant, pas de boîte
-partagée — ni techniquement, ni juridiquement souhaitable.
+Cette section a dit pendant plusieurs sessions qu'il manquait un bouton dans
+l'interface. **C'est faux, et ça l'était déjà.** La chaîne est complète et
+vérifiée :
 
-Le backend est prêt et n'attend que ce bouton : les deux configurations
-existent (Gmail `ac_BDCvl8Std_Rq`, Google Calendar `ac_H4AoPOZxFKAL`), et le
-worker d'envoi comme le lecteur de boîte lisent `profiles.gmail_account_id`
-par utilisateur, à chaque passage. Câblage dans `FRONTEND.md`, section
+| Maillon | Où | État |
+|---|---|---|
+| Le bouton « Connecter ma boîte mail » | `src/scripts/app/profile.js` › `mailboxSection` | écrit, rendu dans /app › Profil |
+| L'appel navigateur | `src/lib/prems/mailbox.js` | `start`, puis `finish` en polling |
+| La fonction serveur | `supabase/functions/connect-mailbox` | **déployée** — répond 401 sans jeton |
+| L'écriture du compte | même fonction | seulement si Composio dit `ACTIVE` |
+| La lecture par les workers | `apply.ts`, `inbox.ts` | `profiles.gmail_account_id`, à chaque passage |
+
+Les deux configurations Composio existent (Gmail `ac_BDCvl8Std_Rq`, Google
+Calendar `ac_H4AoPOZxFKAL`). `npm run preflight` interroge chacun de ces
+maillons et dit lequel manque.
+
+**Ce qui manque n'est donc pas du code : c'est un humain qui clique.** La
+connexion passe par l'écran de consentement Google, qui exige une personne
+réelle devant un navigateur réel — aucun accès serveur ne remplace ça.
+
+/app › Profil › Boîte mail › « Connecter ma boîte mail ». Deux minutes. À
+partir de là, `prems-apply` s'en aperçoit au tick suivant, soit deux minutes
+plus tard, et la première candidature part.
+
+Câblage détaillé dans `FRONTEND.md`, section
 « Connecter la boîte mail du client ».
 
 Tant que c'est nul, le pipeline n'engage rien : les matches restent `new` et
