@@ -18,12 +18,25 @@
  *    silence, and is honest.
  *  - It never argues. A refusal ends the thread. Pushing back on an agency that
  *    has said no is how a client's own address gets marked as spam.
+ *
+ * This is the one agent here that has tools, and the reason is the first rule.
+ * Availability used to be interpolated into the prompt, which meant a model that
+ * ignored it produced a plausible sentence naming a day nobody was free — and
+ * nothing downstream could tell that apart from a real proposal. Now the slots
+ * are behind `get_client_availability`, the facts behind `get_client_facts`, and
+ * a reply is a call to `queue_reply`. What the agent may do is a list of four
+ * functions, and which ones it actually called is recorded next to the message
+ * it produced, so "why did it propose Tuesday?" has an answer that is not a
+ * guess about what the model was thinking.
+ *
+ * The tools read. They do not send: `queue_reply` hands the text back to the
+ * caller, which puts it in the same outbox a client's own reply goes through.
+ * One path out of this system, one place a send can fail.
  */
-import { createSign } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { FunctionTool, LlmAgent } from '@google/adk';
+import { z } from 'zod';
 
-const LOCATION = 'europe-west9';
-const MODEL = 'gemini-2.5-flash-lite';
+import { gemini, runAgent } from './agent.js';
 
 /** The slot vocabulary the interface writes, decoded once here. */
 const DAYS: Record<string, string> = {
@@ -73,44 +86,6 @@ export function readableAvailability(slots: readonly string[]): string | null {
   return parts.length === 1 ? parts[0]! : `${parts.slice(0, -1).join(', ')} et ${parts.at(-1)}`;
 }
 
-async function accessToken(): Promise<string> {
-  const metadata =
-    'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token';
-  try {
-    const r = await fetch(metadata, {
-      headers: { 'Metadata-Flavor': 'Google' },
-      signal: AbortSignal.timeout(1500),
-    });
-    if (r.ok) return ((await r.json()) as { access_token: string }).access_token;
-  } catch {
-    /* not on Cloud Run */
-  }
-  const path = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  if (!path) throw new Error('GOOGLE_APPLICATION_CREDENTIALS manquant');
-  const sa = JSON.parse(readFileSync(path, 'utf8'));
-  const now = Math.floor(Date.now() / 1000);
-  const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
-  const unsigned = `${b64({ alg: 'RS256', typ: 'JWT' })}.${b64({
-    iss: sa.client_email,
-    scope: 'https://www.googleapis.com/auth/cloud-platform',
-    aud: sa.token_uri,
-    exp: now + 3600,
-    iat: now,
-  })}`;
-  const sig = createSign('RSA-SHA256').update(unsigned).sign(sa.private_key, 'base64url');
-  const r = await fetch(sa.token_uri, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-      assertion: `${unsigned}.${sig}`,
-    }),
-  });
-  const j = (await r.json()) as { access_token?: string };
-  if (!j.access_token) throw new Error('authentification Vertex échouée');
-  return j.access_token;
-}
-
 export interface NegotiateInput {
   /** What the agency just wrote. */
   readonly agencyMessage: string;
@@ -149,97 +124,190 @@ export function fallbackReply(input: NegotiateInput): string {
 }
 
 /**
- * Write the next message in the thread.
+ * The instruction: what the negotiator is, minus anything case-specific.
  *
- * Returns null when nothing should be sent - a refusal, or a message the model
- * could not make sense of. Silence is a valid move; a reply that says nothing
- * is not.
+ * Everything it is allowed to assert about the client now comes from a tool
+ * call, so the instruction can say the one thing that matters — go and look —
+ * instead of carrying facts that may not apply to this thread.
  */
-export async function writeReply(input: NegotiateInput, project: string): Promise<string | null> {
-  if (input.kind === 'refused') return null;
-
-  const slots = readableAvailability(input.availability);
-
-  const prompt = `Tu écris la réponse d'un particulier à une agence immobilière, dans une conversation en cours au sujet d'un logement qu'il veut visiter. Le message part de sa boîte mail et porte son nom.
+const NEGOTIATOR_INSTRUCTION = `Tu écris la réponse d'un particulier à une agence immobilière, dans une conversation en cours au sujet d'un logement qu'il veut visiter. Le message part de sa boîte mail et porte son nom.
 
 Ton objectif unique : obtenir une date de visite. Rien d'autre.
 
-Règles :
+Procédure, dans cet ordre :
+1. Appelle get_client_availability pour savoir quand le candidat peut visiter.
+2. Appelle get_client_facts si l'agence pose une question sur le candidat.
+3. Rédige, puis appelle queue_reply avec le message — ou stand_down si aucune réponse n'est utile.
+
+Règles de rédaction :
 - 70 mots maximum. Une agence lit trois lignes.
 - Réponds précisément à ce qu'elle vient d'écrire. Si elle pose une question, réponds-y d'abord, en une phrase.
-- ${
-    slots
-      ? `Propose une date en te fondant UNIQUEMENT sur ces disponibilités : ${slots}. N'en invente aucune autre, ne donne pas de date calendaire précise (pas de "le 14"), reste sur les jours et les moments.`
-      : `Le candidat n'a pas renseigné ses disponibilités. Ne prétends pas en avoir : demande à l'agence de proposer un créneau, en te disant assez souple.`
-  }
+- Ne propose que des créneaux rendus par get_client_availability. N'en invente aucun autre, ne donne pas de date calendaire précise (pas de "le 14"), reste sur les jours et les moments. Si l'outil ne rend aucune disponibilité, ne prétends pas en avoir : demande à l'agence de proposer un créneau, en te disant assez souple.
+- N'écris sur le candidat que ce que get_client_facts a rendu. Si l'agence demande autre chose — garant, date d'entrée, animal, composition du foyer — ne le fabrique pas : écris que tu le transmets dans la journée. Un mail envoyé au nom de quelqu'un ne peut pas contenir un fait inventé à son sujet.
 - Ton neutre, poli, direct. Aucun superlatif, aucune relance insistante.
-- N'invente RIEN. Si l'agence demande une information qui ne figure pas ci-dessous — profession, garant, date d'entrée, animal, composition du foyer — ne la fabrique pas : écris que tu la transmets dans la journée. Un mail envoyé au nom de quelqu'un ne peut pas contenir un fait inventé à son sujet.
 - Ne mentionne ni Prems, ni outil, ni automatisation, ni IA.
-- ${input.hasDossier ? 'Le dossier complet est déjà joint aux échanges : tu peux le rappeler en une demi-phrase, sans lien.' : "Ne parle pas du dossier."}
 - Termine par une formule courte et la signature du candidat.
 
-Le bien : ${[input.rooms ? `${input.rooms} pièces` : null, input.city, input.rentEur ? `${input.rentEur} € / mois` : null].filter(Boolean).join(', ')}
+N'appelle queue_reply ou stand_down qu'une seule fois : c'est la fin de ton tour.`;
 
-Faits connus sur le candidat — les seuls que tu as le droit d'écrire :
-${JSON.stringify(
-  {
-    nom: [input.firstName, input.lastName].filter(Boolean).join(' ') || null,
-    situation_professionnelle: input.employment,
-    revenu_mensuel_net_eur: input.monthlyIncomeEur,
-    dossier_complet_disponible: input.hasDossier,
-  },
-  null,
-  1,
-)}
-Tout champ nul est une information que tu n'as PAS.
+/**
+ * The agent, its tools bound to one thread.
+ *
+ * Rebuilt per call rather than cached, because the tools close over *this*
+ * client and *this* listing. A cached agent would be one bug away from
+ * proposing one client's availability to another client's agency.
+ */
+function negotiator(
+  input: NegotiateInput,
+  project: string,
+  sink: { reply: string | null },
+): LlmAgent {
+  const slots = readableAvailability(input.availability);
 
-Historique de la conversation (du plus ancien au plus récent) :
+  const getAvailability = new FunctionTool({
+    name: 'get_client_availability',
+    description:
+      "Les créneaux où le candidat peut visiter, tels qu'il les a enregistrés. À appeler avant toute proposition de date.",
+    execute: () =>
+      slots
+        ? { available: true, creneaux: slots }
+        : {
+            available: false,
+            consigne:
+              "Le candidat n'a enregistré aucune disponibilité. Demande à l'agence de proposer un créneau.",
+          },
+  });
+
+  const getFacts = new FunctionTool({
+    name: 'get_client_facts',
+    description:
+      'Les faits connus sur le candidat. Un champ absent est une information dont nous ne disposons pas et qui ne doit pas être écrite.',
+    execute: () => ({
+      nom: [input.firstName, input.lastName].filter(Boolean).join(' ') || null,
+      situation_professionnelle: input.employment,
+      revenu_mensuel_net_eur: input.monthlyIncomeEur,
+      dossier_complet_disponible: input.hasDossier,
+      bien: {
+        ville: input.city,
+        pieces: input.rooms,
+        loyer_mensuel_eur: input.rentEur,
+      },
+    }),
+  });
+
+  const queueReply = new FunctionTool({
+    name: 'queue_reply',
+    description:
+      "Met le message en file d'envoi vers l'agence. C'est l'action finale : ne l'appelle qu'une fois, avec le message complet.",
+    parameters: z.object({
+      body: z.string().describe('Le message, signature comprise.'),
+    }),
+    // Idempotent on purpose. A model that calls the terminal action twice must
+    // not be able to send twice; the second call is told so rather than
+    // silently overwriting the first.
+    execute: ({ body }) => {
+      if (sink.reply !== null)
+        return { queued: false, raison: 'un message a déjà été mis en file' };
+      sink.reply = body.trim();
+      return { queued: true };
+    },
+  });
+
+  const standDown = new FunctionTool({
+    name: 'stand_down',
+    description:
+      "N'envoie rien. À utiliser quand aucune réponse n'est utile : un refus, un accusé de réception automatique, un message hors sujet.",
+    parameters: z.object({
+      raison: z.string().describe('Pourquoi il ne faut rien envoyer.'),
+    }),
+    execute: ({ raison }) => ({ acknowledged: true, raison }),
+  });
+
+  return new LlmAgent({
+    name: 'prems_negotiator',
+    model: gemini(project),
+    description: 'Répond à une agence immobilière au nom du candidat, pour obtenir une visite.',
+    instruction: NEGOTIATOR_INSTRUCTION,
+    generateContentConfig: { temperature: 0.3, maxOutputTokens: 500 },
+    tools: [getAvailability, getFacts, queueReply, standDown],
+  });
+}
+
+/**
+ * What the agent decided, and how it got there.
+ *
+ * `toolCalls` is not decoration: it is the difference between a slot the agent
+ * read and a slot it produced, and it is what gets written next to the message
+ * in the event log. A decision nobody can reconstruct is a decision nobody can
+ * defend to the client whose name is on the mail.
+ */
+export interface ReplyDecision {
+  /** The message to queue, or null when nothing should be sent. */
+  readonly body: string | null;
+  /** Every tool the agent called, in order. Empty when it never ran. */
+  readonly toolCalls: readonly string[];
+}
+
+/** Nothing to send, and no agent involved in deciding that. */
+const SILENCE: ReplyDecision = { body: null, toolCalls: [] };
+
+/**
+ * Write the next message in the thread.
+ *
+ * The body is null when nothing should be sent — a refusal, a stand-down, or a
+ * turn the agent ended without deciding. Silence is a valid move; a reply that
+ * says nothing is not.
+ */
+export async function writeReply(input: NegotiateInput, project: string): Promise<ReplyDecision> {
+  // Not a prompt instruction. A refusal ends the thread before the agent is
+  // built, because a rule the model could talk itself out of is not a rule.
+  if (input.kind === 'refused') return SILENCE;
+
+  const slots = readableAvailability(input.availability);
+  const sink: { reply: string | null } = { reply: null };
+
+  const message = `Historique de la conversation (du plus ancien au plus récent) :
 ${input.history.slice(-6).join('\n---\n').slice(0, 4000)}
 
 Dernier message de l'agence, auquel tu réponds :
-${input.agencyMessage.slice(0, 3000)}
+${input.agencyMessage.slice(0, 3000)}`;
 
-Réponds en JSON strict : {"reply":"..."} — ou {"reply":null} si aucune réponse n'est utile.`;
-
+  let toolCalls: readonly string[] = [];
   try {
-    const token = await accessToken();
-    const r = await fetch(
-      `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${project}/locations/${LOCATION}/publishers/google/models/${MODEL}:generateContent`,
-      {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.3,
-            maxOutputTokens: 500,
-            responseMimeType: 'application/json',
-          },
-        }),
-        signal: AbortSignal.timeout(20000),
-      },
-    );
-    if (!r.ok) return fallbackReply(input);
-
-    const j = (await r.json()) as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-    };
-    const text = j.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) return fallbackReply(input);
-
-    const parsed = JSON.parse(text) as { reply?: string | null };
-    const reply = typeof parsed.reply === 'string' ? parsed.reply.trim() : null;
-    if (!reply) return null;
-
-    // A model that starts inventing calendar dates has stopped using the
-    // availability it was given, and a date the client cannot keep is worse
-    // than no date at all.
-    if (!slots && /\b\d{1,2}\s?(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)/i.test(reply)) {
-      return fallbackReply(input);
-    }
-
-    return reply;
+    ({ toolCalls } = await runAgent({
+      agent: negotiator(input, project, sink),
+      prompt: message,
+      timeoutMs: 30_000,
+    }));
   } catch {
-    return fallbackReply(input);
+    return { body: fallbackReply(input), toolCalls: [] };
   }
+
+  // An explicit stand-down is a decision, and it is kept. An empty turn is not:
+  // the agent said nothing and called nothing, which is a failure wearing the
+  // costume of a choice.
+  if (sink.reply === null) {
+    return {
+      body: toolCalls.includes('stand_down') ? null : fallbackReply(input),
+      toolCalls,
+    };
+  }
+
+  // The client had availability and the agent never went to read it. Whatever
+  // it wrote about dates, it did not get them from here — which is exactly the
+  // failure the tools exist to make visible.
+  if (slots && !toolCalls.includes('get_client_availability')) {
+    return { body: fallbackReply(input), toolCalls };
+  }
+
+  // A model that starts inventing calendar dates has stopped using the
+  // availability it was given, and a date the client cannot keep is worse than
+  // no date at all.
+  if (!slots && MONTH.test(sink.reply)) return { body: fallbackReply(input), toolCalls };
+
+  return { body: sink.reply, toolCalls };
 }
+
+/** A calendar date in French. Written out once, because it is used as a guard. */
+const MONTH =
+  /\b\d{1,2}\s?(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)/i;

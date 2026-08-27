@@ -1,0 +1,183 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="930" viewBox="0 0 1280 930" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <rect width="1280" height="930" fill="#ffffff"/>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#57606a"/>
+    </marker>
+  </defs>
+
+  <text x="40" y="46" font-size="26" font-weight="700" fill="#24292f">Prems — de l'annonce publiée à la visite réservée</text>
+  <text x="40" y="72" font-size="15" fill="#57606a">En haut, le pipeline : six jobs Cloud Run, une base qui est la seule vérité. En bas, ce qui décide : trois agents ADK sur Gemini 3.5 Flash.</text>
+
+  <!-- ================= ROW 1 : the pipeline ================= -->
+
+  <!-- Lane A : sources -->
+  <rect x="40" y="100" width="190" height="330" rx="10" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text x="56" y="126" font-size="13" font-weight="700" fill="#57606a">SOURCES</text>
+  <rect x="56" y="140" width="158" height="62" rx="8" fill="#ffffff" stroke="#57606a"/>
+  <text x="70" y="164" font-size="15" font-weight="600" fill="#24292f">Bien'ici</text>
+  <text x="70" y="185" font-size="12" fill="#57606a">un adaptateur, une ligne</text>
+  <rect x="56" y="214" width="158" height="62" rx="8" fill="#ffffff" stroke="#d0d7de" stroke-dasharray="4 3"/>
+  <text x="70" y="238" font-size="15" font-weight="600" fill="#8c959f">autres portails</text>
+  <text x="70" y="259" font-size="12" fill="#8c959f">registry enfichable</text>
+  <text x="56" y="308" font-size="12" fill="#57606a">Ajouter une source :</text>
+  <text x="56" y="326" font-size="12" fill="#57606a">un adaptateur et une ligne</text>
+  <text x="56" y="344" font-size="12" fill="#57606a">en base. Jamais un</text>
+  <text x="56" y="362" font-size="12" fill="#57606a">déploiement.</text>
+
+  <!-- Lane B : Google Cloud -->
+  <rect x="250" y="100" width="360" height="330" rx="10" fill="#f3f8ff" stroke="#a8c7fa"/>
+  <text x="266" y="126" font-size="13" font-weight="700" fill="#1a73e8">GOOGLE CLOUD · europe-west9</text>
+
+  <rect x="266" y="138" width="328" height="44" rx="8" fill="#ffffff" stroke="#1a73e8"/>
+  <text x="280" y="158" font-size="14" font-weight="600" fill="#24292f">Cloud Scheduler</text>
+  <text x="280" y="175" font-size="12" fill="#57606a">six cadences, une par job</text>
+
+  <text x="266" y="202" font-size="12" font-weight="700" fill="#1a73e8">CLOUD RUN JOBS · une seule image</text>
+
+  <rect x="266" y="212" width="158" height="46" rx="8" fill="#ffffff" stroke="#57606a"/>
+  <text x="278" y="232" font-size="13" font-weight="600" fill="#24292f">prems-scrape</text>
+  <text x="278" y="249" font-size="11" fill="#57606a">1 min · 1 440 runs/24 h</text>
+
+  <rect x="436" y="212" width="158" height="46" rx="8" fill="#ffffff" stroke="#57606a"/>
+  <text x="448" y="232" font-size="13" font-weight="600" fill="#24292f">prems-enrich</text>
+  <text x="448" y="249" font-size="11" fill="#57606a">5 min · embeddings</text>
+
+  <rect x="266" y="266" width="158" height="46" rx="8" fill="#ffffff" stroke="#57606a"/>
+  <text x="278" y="286" font-size="13" font-weight="600" fill="#24292f">prems-match</text>
+  <text x="278" y="303" font-size="11" fill="#57606a">1 min · 390 ms/annonce</text>
+
+  <rect x="436" y="266" width="158" height="46" rx="8" fill="#ffffff" stroke="#57606a"/>
+  <text x="448" y="286" font-size="13" font-weight="600" fill="#24292f">prems-agencies</text>
+  <text x="448" y="303" font-size="11" fill="#57606a">15 min · adresses</text>
+
+  <rect x="266" y="320" width="158" height="46" rx="8" fill="#ffffff" stroke="#188038" stroke-width="2"/>
+  <text x="278" y="340" font-size="13" font-weight="600" fill="#24292f">prems-apply</text>
+  <text x="278" y="357" font-size="11" fill="#57606a">2 min · candidature</text>
+
+  <rect x="436" y="320" width="158" height="46" rx="8" fill="#ffffff" stroke="#188038" stroke-width="2"/>
+  <text x="448" y="340" font-size="13" font-weight="600" fill="#24292f">prems-inbox</text>
+  <text x="448" y="357" font-size="11" fill="#57606a">8 h · réponses</text>
+
+  <rect x="266" y="374" width="328" height="44" rx="8" fill="#ffffff" stroke="#1a73e8"/>
+  <text x="280" y="394" font-size="13" font-weight="600" fill="#24292f">Cloud Run · prems-api — Document AI</text>
+  <text x="280" y="410" font-size="11" fill="#57606a">Secret Manager · rien de tout ça n'atteint un navigateur</text>
+
+  <!-- Lane C : Supabase -->
+  <rect x="640" y="100" width="270" height="330" rx="10" fill="#f7f3ff" stroke="#c8b6f0"/>
+  <text x="656" y="126" font-size="13" font-weight="700" fill="#6f42c1">LA SEULE VÉRITÉ</text>
+  <rect x="656" y="138" width="238" height="280" rx="8" fill="#ffffff" stroke="#6f42c1"/>
+  <text x="670" y="162" font-size="15" font-weight="600" fill="#24292f">Supabase Postgres</text>
+  <text x="670" y="181" font-size="12" fill="#57606a">eu-west-1</text>
+  <text x="670" y="207" font-size="12" fill="#24292f">listings · listing_embeddings</text>
+  <text x="670" y="225" font-size="12" fill="#24292f">matches · applications</text>
+  <text x="670" y="243" font-size="12" fill="#24292f">messages — la file de sortie</text>
+  <text x="670" y="261" font-size="12" fill="#24292f">calendar_events · profiles</text>
+  <text x="670" y="279" font-size="12" fill="#24292f">settings — les garde-fous</text>
+  <text x="670" y="297" font-size="12" fill="#24292f">events — le journal de décision</text>
+  <text x="670" y="325" font-size="12" fill="#57606a">RLS partout. RLS sans policy</text>
+  <text x="670" y="343" font-size="12" fill="#57606a">sur ce que seul le pipeline</text>
+  <text x="670" y="361" font-size="12" fill="#57606a">touche : ça refuse tout.</text>
+  <text x="670" y="389" font-size="12" fill="#57606a">pg_cron, 10 min → alertes,</text>
+  <text x="670" y="407" font-size="12" fill="#57606a">hors du pipeline surveillé.</text>
+
+  <!-- Lane D : surfaces -->
+  <rect x="940" y="100" width="300" height="330" rx="10" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text x="956" y="126" font-size="13" font-weight="700" fill="#57606a">CE QUE VOIT LE CLIENT</text>
+  <rect x="956" y="138" width="268" height="122" rx="8" fill="#ffffff" stroke="#57606a"/>
+  <text x="970" y="162" font-size="15" font-weight="600" fill="#24292f">Vercel · Astro statique</text>
+  <text x="970" y="184" font-size="12" fill="#57606a">landing page, sans framework</text>
+  <text x="970" y="202" font-size="12" fill="#57606a">onboarding, 13 écrans</text>
+  <text x="970" y="220" font-size="12" fill="#57606a">/app : matchs, visites, messages</text>
+  <text x="970" y="243" font-size="12" fill="#57606a">Realtime, en lecture, sous RLS</text>
+  <rect x="956" y="272" width="268" height="76" rx="8" fill="#ffffff" stroke="#57606a"/>
+  <text x="970" y="296" font-size="15" font-weight="600" fill="#24292f">Stripe</text>
+  <text x="970" y="317" font-size="12" fill="#57606a">liens de paiement</text>
+  <text x="970" y="335" font-size="12" fill="#57606a">webhook signé, Edge Function</text>
+  <text x="956" y="376" font-size="12" fill="#57606a">Le site peut être éteint :</text>
+  <text x="956" y="394" font-size="12" fill="#57606a">le produit continue. Rien du</text>
+  <text x="956" y="412" font-size="12" fill="#57606a">pipeline n'est dans son chemin.</text>
+
+  <!-- ================= ROW 2 : the agents ================= -->
+
+  <rect x="250" y="470" width="660" height="420" rx="10" fill="#f2f9f4" stroke="#a3d3b1"/>
+  <text x="266" y="496" font-size="13" font-weight="700" fill="#188038">LES AGENTS · @google/adk</text>
+  <text x="266" y="516" font-size="12" fill="#57606a">Vertex AI · gemini-3.5-flash · région eu · identité de service, aucune clé</text>
+
+  <rect x="266" y="530" width="200" height="128" rx="8" fill="#ffffff" stroke="#188038"/>
+  <text x="278" y="552" font-size="13" font-weight="600" fill="#24292f">prems_application_writer</text>
+  <text x="278" y="570" font-size="11" fill="#8c959f">appelé par prems-apply</text>
+  <text x="278" y="594" font-size="12" fill="#57606a">Écrit la candidature.</text>
+  <text x="278" y="612" font-size="12" fill="#57606a">Aucun outil : tout ce qu'il</text>
+  <text x="278" y="630" font-size="12" fill="#57606a">peut dire est déjà là.</text>
+  <text x="278" y="648" font-size="12" fill="#57606a">Sortie sous schéma.</text>
+
+  <rect x="480" y="530" width="200" height="128" rx="8" fill="#ffffff" stroke="#188038"/>
+  <text x="492" y="552" font-size="13" font-weight="600" fill="#24292f">prems_reply_classifier</text>
+  <text x="492" y="570" font-size="11" fill="#8c959f">appelé par prems-inbox</text>
+  <text x="492" y="594" font-size="12" fill="#57606a">visit_offered · refused</text>
+  <text x="492" y="612" font-size="12" fill="#57606a">question · other</text>
+  <text x="492" y="630" font-size="12" fill="#57606a">Aucun outil : lire n'est</text>
+  <text x="492" y="648" font-size="12" fill="#57606a">pas une course.</text>
+
+  <rect x="694" y="530" width="200" height="128" rx="8" fill="#ffffff" stroke="#188038" stroke-width="2"/>
+  <text x="706" y="552" font-size="13" font-weight="600" fill="#24292f">prems_negotiator</text>
+  <text x="706" y="570" font-size="11" fill="#8c959f">appelé par prems-inbox</text>
+  <text x="706" y="594" font-size="12" fill="#57606a">Décide s'il répond, et</text>
+  <text x="706" y="612" font-size="12" fill="#57606a">avec quel créneau.</text>
+  <text x="706" y="630" font-size="12" font-weight="600" fill="#188038">Le seul qui a des outils</text>
+  <text x="706" y="648" font-size="12" fill="#57606a">— les quatre ci-dessous.</text>
+
+  <rect x="266" y="674" width="628" height="96" rx="8" fill="#ffffff" stroke="#a3d3b1"/>
+  <rect x="280" y="688" width="296" height="32" rx="6" fill="#f2f9f4" stroke="#a3d3b1"/>
+  <text x="292" y="709" font-size="12" fill="#24292f">get_client_availability → les créneaux réels</text>
+  <rect x="588" y="688" width="292" height="32" rx="6" fill="#f2f9f4" stroke="#a3d3b1"/>
+  <text x="600" y="709" font-size="12" fill="#24292f">get_client_facts → jamais un fait inventé</text>
+  <rect x="280" y="726" width="296" height="32" rx="6" fill="#f2f9f4" stroke="#a3d3b1"/>
+  <text x="292" y="747" font-size="12" fill="#24292f">queue_reply → idempotent, une seule fois</text>
+  <rect x="588" y="726" width="292" height="32" rx="6" fill="#f2f9f4" stroke="#a3d3b1"/>
+  <text x="600" y="747" font-size="12" fill="#24292f">stand_down → ne rien envoyer, et le dire</text>
+
+  <rect x="266" y="786" width="628" height="88" rx="8" fill="#fff8f0" stroke="#e0a458"/>
+  <text x="280" y="808" font-size="12" font-weight="700" fill="#a15c00">LES GARDE-FOUS SONT EN CODE, PAS DANS LE PROMPT</text>
+  <text x="280" y="830" font-size="12" fill="#24292f">Un refus arrête le fil avant que l'agent existe · le plafond de relances est lu dans settings</text>
+  <text x="280" y="848" font-size="12" fill="#24292f">Créneaux non lus → message plat · date inventée → refusée · tour vide ≠ silence choisi</text>
+  <text x="280" y="866" font-size="12" fill="#57606a">Les cinq cas sont rejoués sans modèle dans workers/test/negotiate.test.ts</text>
+
+  <!-- Lane F : the outside world -->
+  <rect x="940" y="470" width="300" height="420" rx="10" fill="#fffbf0" stroke="#e5c07b"/>
+  <text x="956" y="496" font-size="13" font-weight="700" fill="#a15c00">LE MONDE EXTÉRIEUR</text>
+
+  <rect x="956" y="510" width="268" height="128" rx="8" fill="#ffffff" stroke="#d0a215"/>
+  <text x="970" y="534" font-size="15" font-weight="600" fill="#24292f">Composio</text>
+  <text x="970" y="556" font-size="12" fill="#57606a">Gmail — envoyer et lire</text>
+  <text x="970" y="574" font-size="12" fill="#57606a">Google Calendar — la visite</text>
+  <text x="970" y="598" font-size="12" fill="#24292f">Une connexion par utilisateur.</text>
+  <text x="970" y="616" font-size="12" fill="#24292f">La boîte du client, pas la nôtre.</text>
+
+  <rect x="956" y="656" width="268" height="104" rx="8" fill="#ffffff" stroke="#57606a"/>
+  <text x="970" y="680" font-size="15" font-weight="600" fill="#24292f">L'agence immobilière</text>
+  <text x="970" y="702" font-size="12" fill="#57606a">Reçoit un mail du client.</text>
+  <text x="970" y="720" font-size="12" fill="#57606a">Répond dans sa boîte à lui —</text>
+  <text x="970" y="738" font-size="12" fill="#57606a">le seul endroit lisible sans</text>
+  <text x="970" y="753" font-size="12" fill="#57606a">demander un transfert.</text>
+
+  <text x="956" y="796" font-size="12" fill="#57606a">Aucun agent n'envoie rien.</text>
+  <text x="956" y="814" font-size="12" fill="#57606a">queue_reply écrit dans messages,</text>
+  <text x="956" y="832" font-size="12" fill="#57606a">et prems-apply est la seule</text>
+  <text x="956" y="850" font-size="12" fill="#57606a">porte vers Gmail.</text>
+
+  <!-- ================= arrows ================= -->
+  <g stroke="#57606a" stroke-width="1.8" fill="none" marker-end="url(#a)">
+    <path d="M 230 235 L 264 235"/>
+    <path d="M 610 265 L 638 265"/>
+    <path d="M 910 265 L 938 265"/>
+    <path d="M 430 430 L 430 528"/>
+    <path d="M 894 594 L 938 594"/>
+  </g>
+  <g stroke="#8c959f" stroke-width="1.6" fill="none" stroke-dasharray="5 4" marker-end="url(#a)">
+    <path d="M 894 620 L 916 620 L 916 300 L 894 300"/>
+  </g>
+
+  <text x="446" y="458" font-size="11" fill="#8c959f">prems-apply et prems-inbox appellent les agents</text>
+</svg>

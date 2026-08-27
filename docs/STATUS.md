@@ -20,11 +20,34 @@ Six jobs Cloud Run en `europe-west9`, une seule image, seul `MODE` diffère.
 Alerting : `pg_cron` toutes les 10 min, dans la base — une alarme sur le pipeline
 ne doit pas dépendre du pipeline.
 
+## Ce qui décide, dans ces jobs
+
+Trois agents, tous sur `gemini-3.5-flash` via Vertex AI, construits avec l'Agent
+Development Kit. Le modèle et son authentification sont nommés dans un seul
+fichier, `workers/src/agent.ts` — c'est là qu'on change de modèle, et nulle part
+ailleurs.
+
+| Agent | Outils | Appelé par |
+|---|---|---|
+| `prems_application_writer` | aucun | `prems-apply` |
+| `prems_reply_classifier` | aucun | `prems-inbox` |
+| `prems_negotiator` | 4 | `prems-inbox` |
+
+Les garde-fous du négociateur sont en code et non dans le prompt ; les cinq cas
+sont rejoués sans modèle dans `workers/test/negotiate.test.ts`. Détail dans
+`ARCHITECTURE.md`.
+
+**Une réserve qui vaut d'être écrite ici** : la région du modèle est lue dans la
+documentation, pas dans un appel. `gemini-3.5-flash` est servi depuis `eu` et
+n'est pas documenté pour `europe-west9`. Le code vise `eu` par défaut et lit
+`GCP_MODEL_LOCATION`. **La vérification est à faire avant le prochain
+déploiement** — la commande est dans `RUNBOOK.md`, §4.
+
 ## Les chiffres, mesurés
 
 ```
 815 annonces    146 joignables (17,9 %)    737 matches    0 en DLQ
-1 440 runs/24 h  0 échec                   49 tests       CI verte
+1 440 runs/24 h  0 échec                   59 tests       CI verte
 ```
 
 Les matches sont passés de 1 230 à 737 non pas en perdant quelque chose, mais

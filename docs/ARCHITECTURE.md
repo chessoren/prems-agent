@@ -27,11 +27,69 @@ l'interface de la prochaine session sera une lecture de `events`, rien de plus.
 | Cinq workers | Cloud Run Jobs, `europe-west9` | 24h/24, indépendants du site |
 | OCR pièces | Cloud Run `prems-api` | Porte des secrets |
 | Boîte mail & agenda du client | Composio (Gmail, Google Calendar) | Voir « Le canal », plus bas |
-| Rédaction & classification | Vertex AI, `gemini-2.5-flash-lite` | Le moins cher qui écrit un français correct |
-| Embeddings | `text-multilingual-embedding-002`, 768 dim | Corpus français |
+| Les trois agents | Agent Development Kit (`@google/adk`) | Des outils déclarés, pas un prompt qui demande poliment |
+| Modèle | Vertex AI, `gemini-3.5-flash`, région `eu` | Le premier Flash qui choisit correctement entre quatre outils |
+| Embeddings | `text-multilingual-embedding-002`, 768 dim, `europe-west9` | Corpus français |
 
 Une seule image Docker sert les cinq jobs ; seul `MODE` (ou `SOURCE_SLUG`) diffère.
 Ajouter une source ou un mode n'est jamais un nouveau déploiement.
+
+![Architecture](architecture.svg)
+
+## Les trois agents, et pourquoi un seul a des outils
+
+Le système contient exactement trois agents, tous décrits dans
+`workers/src/agent.ts` pour le modèle et l'authentification, et définis chacun
+dans le worker qui s'en sert.
+
+| Agent | Fichier | Outils | Ce qu'il décide |
+|---|---|---|---|
+| `prems_application_writer` | `draft.ts` | aucun | Le texte de la candidature |
+| `prems_reply_classifier` | `inbox.ts` | aucun | Ce que l'agence vient de dire |
+| `prems_negotiator` | `negotiate.ts` | 4 | S'il répond, et avec quel créneau |
+
+**Deux d'entre eux n'ont pas d'outils, et c'est un choix.** Écrire une
+candidature à partir de faits déjà réunis, ou ranger un message dans quatre
+catégories, ne demande pas d'aller chercher quoi que ce soit. Leur sortie est
+contrainte par un schéma de réponse plutôt que réclamée en prose : « réponds en
+JSON strict » était une consigne que le modèle pouvait ignorer, un
+`outputSchema` est une contrainte que l'API applique.
+
+**Le négociateur en a quatre, et c'est ce qui a changé.** Ses disponibilités
+étaient auparavant interpolées dans le prompt : un modèle qui les ignorait
+produisait une phrase plausible nommant un jour où personne n'était libre, et
+rien en aval ne pouvait distinguer ça d'une vraie proposition.
+
+| Outil | Ce qu'il rend |
+|---|---|
+| `get_client_availability` | Les créneaux enregistrés, ou l'instruction de demander à l'agence |
+| `get_client_facts` | Les faits connus sur le candidat — un champ absent est une information qu'on n'a pas |
+| `queue_reply` | Met le message en file. Idempotent : un second appel est refusé, pas appliqué |
+| `stand_down` | Ne rien envoyer, en disant pourquoi |
+
+Les appels effectivement passés sont enregistrés dans `events`, à côté du
+message produit. « Pourquoi a-t-il proposé mardi ? » a donc une réponse qui
+n'est pas une supposition sur ce que pensait le modèle.
+
+**Les garde-fous ne sont pas dans le prompt.** Une règle qu'un modèle peut se
+convaincre de contourner n'est pas une règle :
+
+- un refus arrête le fil **avant** que l'agent ne soit construit ;
+- le plafond de relances par fil et l'interrupteur d'exploitation sont lus dans
+  `settings`, en base, et vérifiés en amont ;
+- si le client avait des disponibilités et que l'agent n'a pas appelé l'outil
+  qui les rend, le message est remplacé par la version plate — quoi qu'il ait
+  écrit, il ne l'a pas lu ici ;
+- une date calendaire pour un client sans disponibilité est refusée ;
+- un tour vide n'est pas un silence choisi : seul `stand_down` l'est.
+
+Ces cinq cas sont couverts par des tests qui rejouent un script d'appels
+d'outils contre les vrais outils, sans modèle : `workers/test/negotiate.test.ts`.
+
+**Rien n'est envoyé par un agent.** `queue_reply` rend le texte à l'appelant,
+qui l'écrit dans `messages` — la même file de sortie que les réponses écrites
+par le client lui-même. Une seule porte de sortie, un seul endroit où un envoi
+peut échouer.
 
 ## Le canal de candidature — la décision la plus structurante
 
