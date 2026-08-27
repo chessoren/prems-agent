@@ -32,37 +32,69 @@ import { GoogleGenAI } from '@google/genai';
 export const LOCATION = process.env.GCP_REGION ?? 'europe-west9';
 
 /**
- * The Gemini calls go to the European multi-region, not to Paris.
+ * Gemini 3.7 Flash, on Vertex AI.
  *
- * This is the same split already made for Document AI, and for the same reason:
- * `europe-west9` is not offered as a location for the thing being called. The
- * Gemini 3.x family is served from `eu`, the European multi-region, and is not
- * documented as available from the Paris single region. `eu` keeps the request
- * inside the European Union, which is the constraint that actually applies —
- * unlike `global`, which would not.
+ * The path here was two wrong turns. `gemini-2.5-flash-lite` was chosen when
+ * the work was pure writing and Flash-Lite was the cheapest model that wrote
+ * idiomatic French; the note that came with it — "Gemini 3.5 Flash-Lite does
+ * not exist, checked against the live endpoint" — was true of the *Flash-Lite*
+ * variant and said nothing about the family, which is how this repository spent
+ * a while two generations behind. 3.5 Flash was the correction. 3.7 Flash is
+ * the current one, and the reason to take it is the same reason 2.5 Flash-Lite
+ * had to go: the negotiator now chooses between four tools, and tool selection
+ * is exactly where the smaller and older models are weakest.
  *
- * Read from the environment so a deploy can move it without a build. **Confirm
- * against the live endpoint before deploying** (`docs/RUNBOOK.md`, §4): this
- * value comes from Google's documentation, and the last time a model name in
- * this repository was taken from documentation alone it was wrong.
+ * @see MODEL_LOCATION — the region is not a separate decision from the model.
  */
-export const MODEL_LOCATION = process.env.GCP_MODEL_LOCATION ?? 'eu';
+export const MODEL = process.env.GCP_MODEL ?? 'gemini-3.7-flash';
 
 /**
- * Gemini 3.5 Flash, on Vertex AI.
+ * Where each model is actually served from. Not a free choice.
  *
- * It replaces `gemini-2.5-flash-lite`, which was chosen when Flash-Lite was the
- * cheapest model that wrote idiomatic French and the work was pure writing. Two
- * things changed. The agent now calls tools and has to choose between them,
- * which is where the smaller model was weakest; and 3.5 Flash is the first
- * Flash-tier model with parallel agentic execution, so the negotiator can read
- * availability and the client's file in one turn instead of three.
+ * A model and its region are one decision. `europe-west9` — where every job,
+ * every byte of client data and the embedding model live — serves no Gemini 3.x
+ * model at all. Past that, the two candidates differ on the thing that matters
+ * most here:
  *
- * The per-token price is higher. The volume is not per run: one call per
- * application written and one per reply received, against a scrape that runs
- * every minute and never touches a model at all.
+ *  - `gemini-3.7-flash` runs on the **global** endpoint only. Global routes and
+ *    processes anywhere in the world. There is no EU data residency and no
+ *    in-region ML processing guarantee.
+ *  - `gemini-3.5-flash` runs from `eu`, the European multi-region, and is the
+ *    most recent model that keeps the request inside the European Union.
+ *
+ * **What leaves the EU on the global endpoint is not abstract.** These prompts
+ * carry a named person's employment status, net monthly income, the days they
+ * are free, and the text of their private correspondence with a letting agency.
+ * That is the trade being made, stated here so nobody has to infer it from an
+ * env var. Switching back is two variables and no code:
+ *
+ *   GCP_MODEL=gemini-3.5-flash GCP_MODEL_LOCATION=eu
+ *
+ * Verify both against the live endpoint before any deploy — `npm run gcp:models`
+ * probes every pair and tells you which ones answer. Documentation has been
+ * wrong about this repository's model twice already.
  */
-export const MODEL = 'gemini-3.5-flash';
+const SERVED_FROM: Record<string, string> = {
+  'gemini-3.7-flash': 'global',
+  'gemini-3.5-flash': 'eu',
+};
+
+export const MODEL_LOCATION = process.env.GCP_MODEL_LOCATION ?? SERVED_FROM[MODEL] ?? 'global';
+
+/**
+ * One line in the logs of every run that talks to a model.
+ *
+ * A residency decision that is only visible in a source file is a residency
+ * decision nobody re-examines. This puts it in Cloud Logging, on every run,
+ * where an operator sees it without being asked to go and look.
+ */
+export function modelBanner(): string {
+  const residency =
+    MODEL_LOCATION === 'global'
+      ? 'AUCUNE résidence des données — traitement mondial'
+      : `données traitées en « ${MODEL_LOCATION} »`;
+  return `modèle: ${MODEL} @ ${MODEL_LOCATION} — ${residency}`;
+}
 
 /**
  * The embedding model is a separate decision and stays where it was.

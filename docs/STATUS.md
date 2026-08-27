@@ -22,7 +22,7 @@ ne doit pas dépendre du pipeline.
 
 ## Ce qui décide, dans ces jobs
 
-Trois agents, tous sur `gemini-3.5-flash` via Vertex AI, construits avec l'Agent
+Trois agents, tous sur `gemini-3.7-flash` via Vertex AI, construits avec l'Agent
 Development Kit. Le modèle et son authentification sont nommés dans un seul
 fichier, `workers/src/agent.ts` — c'est là qu'on change de modèle, et nulle part
 ailleurs.
@@ -37,11 +37,19 @@ Les garde-fous du négociateur sont en code et non dans le prompt ; les cinq cas
 sont rejoués sans modèle dans `workers/test/negotiate.test.ts`. Détail dans
 `ARCHITECTURE.md`.
 
-**Une réserve qui vaut d'être écrite ici** : la région du modèle est lue dans la
-documentation, pas dans un appel. `gemini-3.5-flash` est servi depuis `eu` et
-n'est pas documenté pour `europe-west9`. Le code vise `eu` par défaut et lit
-`GCP_MODEL_LOCATION`. **La vérification est à faire avant le prochain
-déploiement** — la commande est dans `RUNBOOK.md`, §4.
+**Une réserve, et un arbitrage.**
+
+La réserve : aucune paire modèle × région n'a été vérifiée depuis une machine de
+développement, faute d'identifiants GCP. `npm run gcp:models` sonde les cinq
+paires en trois secondes et rend un tableau — **à passer avant le prochain
+déploiement**.
+
+L'arbitrage : `gemini-3.7-flash` n'existe que sur l'endpoint global, donc
+**sans résidence des données dans l'UE**. Les prompts portent le nom du client,
+son revenu, ses disponibilités et sa correspondance avec l'agence. Le repli
+(`gemini-3.5-flash` en `eu`) est deux variables sur les jobs, sans redéploiement.
+La décision est loggée à chaque run qui parle à un modèle, et détaillée dans
+`RUNBOOK.md` §4.
 
 ## Les chiffres, mesurés
 

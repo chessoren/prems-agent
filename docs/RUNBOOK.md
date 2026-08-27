@@ -156,50 +156,84 @@ exact ; elle n'apparaît pas dans le filtre de logs utilisé.
 Les modèles sont nommés une seule fois, dans `workers/src/agent.ts`. Aucun autre
 fichier ne contient d'identifiant de modèle.
 
-| | Modèle | Région |
-|---|---|---|
-| Agents | `gemini-3.5-flash` | `eu` (multi-région européenne) |
-| Embeddings | `text-multilingual-embedding-002` | `europe-west9` |
+| | Modèle | Région | Résidence des données |
+|---|---|---|---|
+| Agents | `gemini-3.7-flash` | `global` | **aucune** — traitement mondial |
+| Embeddings | `text-multilingual-embedding-002` | `europe-west9` | UE, Paris |
+| *Repli* | `gemini-3.5-flash` | `eu` | UE, multi-région |
 
-**Deux choses sont vérifiées, une troisième ne l'est pas.**
-
-Vérifié : `text-multilingual-embedding-002` répond en 768 dimensions depuis
-`europe-west9` — c'est la dimension figée dans `listing_embeddings`, et le
-corpus est français, là où `text-embedding-004` est entraîné majoritairement sur
-de l'anglais.
-
-Vérifié aussi, et c'est l'erreur qui a coûté le plus de temps : **« Gemini 3.5
-Flash-Lite » n'existe pas.** La famille Flash-Lite s'arrête à
-`gemini-2.5-flash-lite`, et `gemini-3-flash-lite` répond 404. La conclusion
-qu'on en avait tirée — « la famille 3.x n'existe pas » — était fausse :
-`gemini-3.5-flash`, sans le Lite, est le modèle courant. Un 404 sur une variante
-ne dit rien de la famille.
-
-**Non vérifié depuis cette machine : la région.** `gemini-3.5-flash` est
-documenté comme servi depuis `eu`, la multi-région européenne, et n'est pas
-documenté comme disponible depuis `europe-west9` — même situation que les
-processeurs Document AI, et pour la même raison. `eu` garde la requête dans
-l'Union européenne, ce qui est la contrainte réellement applicable ; `global` ne
-la garderait pas. Mais c'est une lecture de la documentation, pas un appel.
-**Avant de déployer, faites l'appel :**
+### Ne posez plus la question, exécutez-la
 
 ```bash
-PROJECT=gen-lang-client-0781599139
-TOKEN=$(gcloud auth print-access-token)
-
-for LOC in eu europe-west9; do
-  echo -n "$LOC : "
-  curl -s -o /dev/null -w '%{http_code}\n' \
-    -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-    "https://${LOC}-aiplatform.googleapis.com/v1/projects/$PROJECT/locations/${LOC}/publishers/google/models/gemini-3.5-flash:generateContent" \
-    -d '{"contents":[{"role":"user","parts":[{"text":"ping"}]}]}'
-done
+npm run gcp:models              # sonde chaque paire modèle × région
+npm run gcp:models -- --strict  # sort en 1 si la paire configurée ne répond pas
+npm run gcp:models -- --dry-run # affiche les endpoints, n'appelle rien
 ```
 
-200 sur `eu` : rien à faire, c'est le défaut. 200 sur `europe-west9` aussi :
-posez `GCP_MODEL_LOCATION=europe-west9` sur les jobs et tout revient à Paris.
-404 sur les deux : le modèle a encore changé de nom, et c'est `agent.ts` — un
-seul fichier — qu'il faut corriger.
+Ça sonde cinq paires en un appel chacune et rend un tableau : ce qui répond, ce
+qui n'existe pas là, ce à quoi il manque un droit IAM. À passer avant tout
+déploiement, et dans la CI de déploiement si vous en ajoutez une — c'est trois
+secondes contre une journée de jobs qui échouent en boucle.
+
+Prérequis : `gcloud auth application-default login` (ou
+`GOOGLE_APPLICATION_CREDENTIALS`), et l'API Vertex activée
+(`gcloud services enable aiplatform.googleapis.com`).
+
+### Ce qui est établi, et ce qui ne l'est pas
+
+**Établi — l'erreur qui a coûté le plus de temps.** « Gemini 3.5 Flash-Lite »
+n'existe pas : la famille Flash-Lite s'arrête à `gemini-2.5-flash-lite`, et
+`gemini-3-flash-lite` répond 404. La conclusion qu'on en avait tirée — « la
+famille 3.x n'existe pas » — était fausse, et a laissé les workers deux
+générations en arrière. **Un 404 sur une variante ne dit rien de la famille.**
+C'est précisément pour ça que `gcp:models` existe.
+
+**Établi.** `text-multilingual-embedding-002` répond en 768 dimensions depuis
+`europe-west9` — la dimension figée dans `listing_embeddings`. Le corpus est
+français, là où `text-embedding-004` est entraîné majoritairement sur de
+l'anglais.
+
+**Non établi depuis une machine de développement : rien sur les régions Gemini.**
+Aucun identifiant GCP n'y est disponible, donc le tableau ci-dessus vient de la
+documentation. Ce qu'elle dit :
+
+- `gemini-3.7-flash` n'est servi que par l'endpoint **global**. Global route et
+  traite n'importe où dans le monde : ni résidence des données, ni garantie de
+  traitement dans une région donnée.
+- `gemini-3.5-flash` est servi depuis `eu` et reste le modèle le plus récent qui
+  garde la requête dans l'Union européenne.
+- **Aucun** modèle Gemini 3.x n'est documenté pour `europe-west9`. Même
+  situation que les processeurs Document AI, et pour la même raison.
+
+### La décision de résidence, en clair
+
+Le produit est passé sur `gemini-3.7-flash`, donc sur l'endpoint global. Ce qui
+sort de l'UE n'est pas abstrait : ces prompts portent le nom d'une personne, sa
+situation professionnelle, son revenu net mensuel, ses disponibilités, et le
+texte de sa correspondance privée avec une agence.
+
+C'est un arbitrage, pas un oubli. Il est écrit ici, dans `agent.ts`, et **loggé
+à chaque run** qui parle à un modèle :
+
+```
+modèle: gemini-3.7-flash @ global — AUCUNE résidence des données — traitement mondial
+```
+
+Revenir en arrière ne demande aucun code, seulement deux variables sur les jobs :
+
+```bash
+gcloud run jobs update prems-apply --region europe-west9 \
+  --update-env-vars GCP_MODEL=gemini-3.5-flash,GCP_MODEL_LOCATION=eu
+gcloud run jobs update prems-inbox --region europe-west9 \
+  --update-env-vars GCP_MODEL=gemini-3.5-flash,GCP_MODEL_LOCATION=eu
+```
+
+Les deux seuls jobs concernés sont ceux-là : `prems-enrich` ne fait que des
+embeddings, qui sont restés à Paris.
+
+**À décider avant de prendre un client payant**, et à écrire dans la politique
+de confidentialité si le global est conservé : un service qui traite des
+bulletins de paie français doit pouvoir dire où ils sont traités.
 
 ---
 

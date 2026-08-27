@@ -52,7 +52,7 @@ for the two honest caveats on that number.
 
 ## The agents
 
-Three, all on `gemini-3.5-flash` through Vertex AI, built with the
+Three, all on `gemini-3.7-flash` through Vertex AI, built with the
 **Agent Development Kit** (`@google/adk`). The model and its authentication are
 named in exactly one file, [`workers/src/agent.ts`](workers/src/agent.ts).
 
@@ -111,7 +111,7 @@ through. One way out of this system, one place a send can fail.
 | Cloud Run Jobs | The six workers. One image; `MODE` selects the job |
 | Cloud Run | `prems-api` — document OCR, the only service holding secrets |
 | Cloud Scheduler | Six cadences, one per job |
-| Vertex AI | `gemini-3.5-flash` (region `eu`) and `text-multilingual-embedding-002` (`europe-west9`) |
+| Vertex AI | `gemini-3.7-flash` (global endpoint) and `text-multilingual-embedding-002` (`europe-west9`) |
 | Document AI | ID documents and payslips, EU multi-region processors |
 | Secret Manager | Service-role and API keys, mounted at run time |
 | Artifact Registry + Cloud Build | `workers/cloudbuild.yaml` is the whole deployment |
@@ -177,6 +177,7 @@ Full first-run procedure, IAM roles and the checks to run before deploying:
 
 ```bash
 npm run ci                  # typecheck + tests + build
+npm run gcp:models          # which model answers, from which region
 ```
 
 ## What does not work yet
@@ -196,10 +197,16 @@ interesting part.
 - **One source.** The sites behind anti-bot (LeBonCoin, SeLoger, PAP) wait on a
   proxy purchase. Adding a source is an adapter plus a row in `sources` — never
   a deployment.
-- **Region check pending.** `gemini-3.5-flash` is documented as served from the
-  `eu` multi-region and is not documented for `europe-west9`. The code defaults
-  to `eu` and reads `GCP_MODEL_LOCATION`; confirm against the live endpoint
-  before deploying — the command is in [`docs/RUNBOOK.md`](docs/RUNBOOK.md), §4.
+- **No model call has been verified from a development machine.** No GCP
+  credentials are available there, so the model/region pairing comes from
+  documentation. `npm run gcp:models` probes all five pairs in one call each and
+  prints what answers — run it before deploying.
+- **The model runs on the global endpoint, so there is no EU data residency.**
+  `gemini-3.7-flash` is served from `global` only; the prompts carry a named
+  person's income, availability and private correspondence. The EU-resident
+  fallback is `GCP_MODEL=gemini-3.5-flash GCP_MODEL_LOCATION=eu` — two variables,
+  no code, no redeploy. This is a decision to take deliberately before the first
+  paying client, not a detail. See [`docs/RUNBOOK.md`](docs/RUNBOOK.md), §4.
 
 ## Provenance
 

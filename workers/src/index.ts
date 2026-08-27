@@ -12,6 +12,7 @@
  * path is written with the same care as the success path.
  */
 
+import { modelBanner } from './agent.js';
 import { ADAPTERS } from './adapters/registry.js';
 import { db, logEvent } from './db.js';
 import { backfillEmbeddings, backfillSearchEmbeddings, linkDuplicates } from './embed.js';
@@ -62,6 +63,10 @@ async function main(): Promise<void> {
   if (process.env.MODE === 'inbox') {
     const project = process.env.GCP_PROJECT_ID;
     if (!project) throw new Error('GCP_PROJECT_ID manquant');
+    // Which model, in which region, and what that means for the data. Logged on
+    // every run: a residency decision visible only in a source file is one
+    // nobody re-examines.
+    console.log(modelBanner());
     const started = Date.now();
     const { clients, replies } = await watchAllInboxes(project);
     console.log(`inbox: ${clients} boîte(s) lue(s), ${replies} réponse(s) traitée(s), ${Date.now() - started} ms`);
@@ -70,6 +75,7 @@ async function main(): Promise<void> {
   if (process.env.MODE === 'apply') {
     const project = process.env.GCP_PROJECT_ID;
     if (!project) throw new Error('GCP_PROJECT_ID manquant');
+    console.log(modelBanner());
     const started = Date.now();
     const queued = await queueApplications(Number(process.env.QUEUE_LIMIT ?? 50));
     const { sent, failed } = await sendDue(project, Number(process.env.SEND_LIMIT ?? 20));
