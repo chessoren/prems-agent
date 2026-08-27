@@ -9,67 +9,25 @@
  *
  * text-multilingual-embedding-002, 768 dimensions, verified against the live
  * endpoint. The corpus is French: text-embedding-004 is trained mostly on
- * English and would be the wrong tool sold as the newer one.
+ * English and would be the wrong tool sold as the newer one. The model is named
+ * in `agent.ts` with every other model, so there is one file to read to know
+ * what this system runs on.
+ *
+ * The call goes through the GenAI SDK. What that removed is forty lines that
+ * signed a JWT by hand and exchanged it for a token — the third copy of the
+ * same forty lines in this directory. Authentication is Application Default
+ * Credentials now, which is what Cloud Run already hands the container.
+ *
+ * One capability went with them: `GCP_SERVICE_ACCOUNT_JSON`, a key pasted
+ * inline into the environment. Nothing referenced it, and the replacement for
+ * running this locally is `gcloud auth application-default login` — a path that
+ * does not involve a private key sitting in a shell history.
  */
-import { createHash, createSign } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { EMBEDDING_MODEL, genai } from './agent.js';
 import { db, logEvent } from './db.js';
 
-const LOCATION = 'europe-west9';
-const MODEL = 'text-multilingual-embedding-002';
 const BATCH = 25;
-
-function serviceAccount(): { client_email: string; private_key: string; token_uri: string; project_id: string } {
-  const path = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  if (path) return JSON.parse(readFileSync(path, 'utf8'));
-  const inline = process.env.GCP_SERVICE_ACCOUNT_JSON;
-  if (inline) return JSON.parse(inline);
-  throw new Error('GOOGLE_APPLICATION_CREDENTIALS ou GCP_SERVICE_ACCOUNT_JSON requis');
-}
-
-/**
- * A Vertex access token.
- *
- * On Cloud Run the metadata server hands one over directly, which is why the
- * job carries no key file. The signed-JWT path exists only for running this
- * locally against the same project.
- */
-async function accessToken(): Promise<string> {
-  const metadata =
-    'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token';
-  try {
-    const r = await fetch(metadata, {
-      headers: { 'Metadata-Flavor': 'Google' },
-      signal: AbortSignal.timeout(1500),
-    });
-    if (r.ok) return ((await r.json()) as { access_token: string }).access_token;
-  } catch {
-    /* not on Cloud Run - fall through to the key */
-  }
-
-  const sa = serviceAccount();
-  const now = Math.floor(Date.now() / 1000);
-  const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
-  const unsigned = `${b64({ alg: 'RS256', typ: 'JWT' })}.${b64({
-    iss: sa.client_email,
-    scope: 'https://www.googleapis.com/auth/cloud-platform',
-    aud: sa.token_uri,
-    exp: now + 3600,
-    iat: now,
-  })}`;
-  const signature = createSign('RSA-SHA256').update(unsigned).sign(sa.private_key, 'base64url');
-  const r = await fetch(sa.token_uri, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-      assertion: `${unsigned}.${signature}`,
-    }),
-  });
-  const j = (await r.json()) as { access_token?: string };
-  if (!j.access_token) throw new Error('authentification Vertex échouée');
-  return j.access_token;
-}
 
 /**
  * `RETRIEVAL_DOCUMENT` for the things being searched over, `RETRIEVAL_QUERY`
@@ -85,24 +43,16 @@ export async function embedTexts(
   taskType: TaskType = 'RETRIEVAL_DOCUMENT',
 ): Promise<number[][]> {
   if (texts.length === 0) return [];
-  const token = await accessToken();
-  const url =
-    `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${project}` +
-    `/locations/${LOCATION}/publishers/google/models/${MODEL}:predict`;
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      instances: texts.map((content) => ({ content, task_type: taskType })),
-    }),
+  const response = await genai(project).models.embedContent({
+    model: EMBEDDING_MODEL,
+    contents: [...texts],
+    config: { taskType },
   });
-  if (!response.ok) throw new Error(`Vertex: HTTP ${response.status} ${(await response.text()).slice(0, 200)}`);
 
-  const body = (await response.json()) as {
-    predictions?: Array<{ embeddings?: { values?: number[] } }>;
-  };
-  return (body.predictions ?? []).map((p) => p.embeddings?.values ?? []);
+  // One vector per input, in order. A short array here would silently pair a
+  // listing with somebody else's embedding, so the caller checks the length.
+  return (response.embeddings ?? []).map((e) => e.values ?? []);
 }
 
 /**
@@ -157,7 +107,7 @@ export async function backfillEmbeddings(project: string, limit = 200): Promise<
     const payload = slice
       .map((row, index) => ({ row, vector: vectors[index] }))
       .filter((p) => p.vector && p.vector.length > 0)
-      .map((p) => ({ listing_id: p.row.id as string, embedding: p.vector as number[], model: MODEL }));
+      .map((p) => ({ listing_id: p.row.id as string, embedding: p.vector as number[], model: EMBEDDING_MODEL }));
 
     if (payload.length) {
       const { error } = await client.from('listing_embeddings').upsert(payload, { onConflict: 'listing_id' });

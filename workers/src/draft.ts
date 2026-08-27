@@ -10,54 +10,15 @@
  *  - No superlatives. "Je serais ravi de découvrir ce bien d'exception" is how
  *    a template announces itself.
  *
- * Gemini 2.5 Flash-Lite: the cheapest model that writes idiomatic French, and
- * the task is constrained enough that a larger one buys nothing. Note that
- * "Gemini 3.5 Flash-Lite" does not exist - checked against the live endpoint,
- * which answers 404 for it and 200 for this.
+ * The model is Gemini 3.5 Flash, on Vertex AI, reached through the Agent
+ * Development Kit rather than by hand (see `agent.ts`). The writer is a plain
+ * agent with no tools: everything it may say is in the prompt, and giving it a
+ * way to go and read more would only widen what it can get wrong.
  */
-import { createSign } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { LlmAgent } from '@google/adk';
+import { z } from 'zod';
 
-const LOCATION = 'europe-west9';
-const MODEL = 'gemini-2.5-flash-lite';
-
-async function accessToken(): Promise<string> {
-  const metadata =
-    'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token';
-  try {
-    const r = await fetch(metadata, {
-      headers: { 'Metadata-Flavor': 'Google' },
-      signal: AbortSignal.timeout(1500),
-    });
-    if (r.ok) return ((await r.json()) as { access_token: string }).access_token;
-  } catch {
-    /* not on Cloud Run */
-  }
-  const path = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  if (!path) throw new Error('GOOGLE_APPLICATION_CREDENTIALS manquant');
-  const sa = JSON.parse(readFileSync(path, 'utf8'));
-  const now = Math.floor(Date.now() / 1000);
-  const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
-  const unsigned = `${b64({ alg: 'RS256', typ: 'JWT' })}.${b64({
-    iss: sa.client_email,
-    scope: 'https://www.googleapis.com/auth/cloud-platform',
-    aud: sa.token_uri,
-    exp: now + 3600,
-    iat: now,
-  })}`;
-  const sig = createSign('RSA-SHA256').update(unsigned).sign(sa.private_key, 'base64url');
-  const r = await fetch(sa.token_uri, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-      assertion: `${unsigned}.${sig}`,
-    }),
-  });
-  const j = (await r.json()) as { access_token?: string };
-  if (!j.access_token) throw new Error('authentification Vertex échouée');
-  return j.access_token;
-}
+import { gemini, runAgentJson } from './agent.js';
 
 export interface DraftInput {
   readonly firstName: string | null;
@@ -111,15 +72,15 @@ export function fallbackDraft(input: DraftInput): Draft {
   };
 }
 
-export async function writeDraft(input: DraftInput, project: string): Promise<Draft> {
-  // Whether the income comfortably clears the bar agencies actually apply.
-  // Stated as a fact when it is true, never computed for the model to guess at.
-  const ratio =
-    input.monthlyIncomeEur && input.rentEur
-      ? Math.round((input.monthlyIncomeEur / input.rentEur) * 10) / 10
-      : null;
-
-  const prompt = `Tu écris, à la première personne, l'e-mail par lequel un particulier demande à visiter un logement. Il part de sa propre boîte mail et porte son nom : il doit se lire comme un message écrit à la main, un soir, par quelqu'un qui veut cet appartement.
+/**
+ * The rules, which do not change from one application to the next.
+ *
+ * They belong in the agent's instruction rather than in the message: the
+ * instruction is what the agent *is*, the message is the case in front of it.
+ * Keeping that split honest is what makes the prompt reviewable — every line
+ * below is here because its opposite was observed in a real draft.
+ */
+const WRITER_INSTRUCTION = `Tu écris, à la première personne, l'e-mail par lequel un particulier demande à visiter un logement. Il part de sa propre boîte mail et porte son nom : il doit se lire comme un message écrit à la main, un soir, par quelqu'un qui veut cet appartement.
 
 Ce qui fait qu'une agence répond :
 - Elle reçoit quarante messages par jour et lit les trois premières lignes. 80 mots maximum.
@@ -135,8 +96,57 @@ Interdits, chacun pour une raison :
 - Ne mets aucun lien : le dossier et l'annonce sont ajoutés automatiquement sous ta signature.
 - Pas de "Madame, Monsieur," suivi d'un saut : commence par "Bonjour," — c'est ce qu'écrit un particulier.
 
-${input.hasDossier ? "Le candidat a un dossier DossierFacile vérifié, dont le lien est ajouté automatiquement après ta signature. Tu peux dire en une demi-phrase que le dossier complet est disponible, sans le décrire ni donner d'URL.\n" : ''}${ratio && ratio >= 3 ? `Le revenu représente ${ratio} fois le loyer, ce qui est au-dessus du seuil habituel : c'est un argument, formule-le simplement.\n` : ''}
-Données disponibles (tout champ absent ou nul n'existe pas et ne doit pas être évoqué) :
+Tout champ absent ou nul dans les données n'existe pas et ne doit pas être évoqué.
+
+L'objet doit permettre de retrouver l'annonce sans ouvrir le message : type de bien, ville, et rien d'autre. Pas de nom de candidat dans l'objet.`;
+
+/**
+ * What the agent must return, declared rather than described.
+ *
+ * The schema goes to the model as a response schema, so "réponds en JSON
+ * strict" — an instruction that was occasionally ignored — becomes a constraint
+ * the API enforces.
+ */
+const DraftSchema = z.object({
+  subject: z.string().describe("L'objet : type de bien et ville, rien d'autre."),
+  body: z.string().describe("Le corps du message, signature du candidat comprise."),
+});
+
+/** Built once per process: an agent is a description, and this one never varies. */
+let writer: { project: string; agent: LlmAgent } | null = null;
+
+function applicationWriter(project: string): LlmAgent {
+  if (writer?.project === project) return writer.agent;
+  const agent = new LlmAgent({
+    name: 'prems_application_writer',
+    model: gemini(project),
+    description: "Écrit la candidature d'un particulier à une agence immobilière.",
+    instruction: WRITER_INSTRUCTION,
+    generateContentConfig: { temperature: 0.4, maxOutputTokens: 600 },
+    outputSchema: DraftSchema,
+  });
+  writer = { project, agent };
+  return agent;
+}
+
+export async function writeDraft(input: DraftInput, project: string): Promise<Draft> {
+  // Whether the income comfortably clears the bar agencies actually apply.
+  // Stated as a fact when it is true, never computed for the model to guess at.
+  const ratio =
+    input.monthlyIncomeEur && input.rentEur
+      ? Math.round((input.monthlyIncomeEur / input.rentEur) * 10) / 10
+      : null;
+
+  const message = `${
+    input.hasDossier
+      ? "Le candidat a un dossier DossierFacile vérifié, dont le lien est ajouté automatiquement après sa signature. Tu peux dire en une demi-phrase que le dossier complet est disponible, sans le décrire ni donner d'URL.\n"
+      : ''
+  }${
+    ratio && ratio >= 3
+      ? `Le revenu représente ${ratio} fois le loyer, ce qui est au-dessus du seuil habituel : c'est un argument, formule-le simplement.\n`
+      : ''
+  }
+Données disponibles :
 ${JSON.stringify(
   {
     prenom: input.firstName,
@@ -155,48 +165,19 @@ ${JSON.stringify(
   },
   null,
   1,
-)}
+)}`;
 
-L'objet doit permettre de retrouver l'annonce sans ouvrir le message : type de bien, ville, et rien d'autre. Pas de nom de candidat dans l'objet.
+  const parsed = await runAgentJson<{ subject?: string; body?: string }>({
+    agent: applicationWriter(project),
+    prompt: message,
+    timeoutMs: 20_000,
+  });
 
-Réponds en JSON strict : {"subject": "...", "body": "..."}`;
+  if (!parsed?.subject || !parsed.body) return fallbackDraft(input);
 
-  try {
-    const token = await accessToken();
-    const url =
-      `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${project}` +
-      `/locations/${LOCATION}/publishers/google/models/${MODEL}:generateContent`;
+  // A model that ignores the word limit produces something that reads as
+  // generated. Better a plain message that reads as human.
+  if (parsed.body.split(/\s+/).length > 180) return fallbackDraft(input);
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.4,
-          maxOutputTokens: 600,
-          responseMimeType: 'application/json',
-        },
-      }),
-      signal: AbortSignal.timeout(20000),
-    });
-    if (!response.ok) return fallbackDraft(input);
-
-    const body = (await response.json()) as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-    };
-    const text = body.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) return fallbackDraft(input);
-
-    const parsed = JSON.parse(text) as { subject?: string; body?: string };
-    if (!parsed.subject || !parsed.body) return fallbackDraft(input);
-
-    // A model that ignores the word limit produces something that reads as
-    // generated. Better a plain message that reads as human.
-    if (parsed.body.split(/\s+/).length > 180) return fallbackDraft(input);
-
-    return { subject: parsed.subject.slice(0, 180), body: parsed.body };
-  } catch {
-    return fallbackDraft(input);
-  }
+  return { subject: parsed.subject.slice(0, 180), body: parsed.body };
 }

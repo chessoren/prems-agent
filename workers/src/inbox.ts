@@ -12,51 +12,20 @@
  * private correspondence; the fact that the API would return everything is not a
  * reason to look at everything.
  *
- * It never sends on its own. Classification decides what a message *is*; a
- * reply to it is drafted and left for the client. An agent that answers an
- * agency unprompted can commit somebody to a viewing they cannot attend, and
- * the cost of being wrong is borne entirely by them.
+ * It answers only inside stated limits. Classification decides what a message
+ * *is*; whether to reply to it is a second decision, taken by an agent with
+ * tools (`negotiate.ts`) behind three gates the model cannot argue with — a
+ * refusal ends the thread, a cap ends a loop, and an operator switch ends both.
+ * An agent that answers an agency unprompted can commit somebody to a viewing
+ * they cannot attend, and the cost of being wrong is borne entirely by them.
  */
-import { createSign } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { LlmAgent } from '@google/adk';
+import { z } from 'zod';
+
+import { MODEL, gemini, runAgentJson } from './agent.js';
 import { db, logEvent } from './db.js';
 import { canExecute, createCalendarEvent, fetchEmails } from './composio.js';
-import { writeReply, readableAvailability } from './negotiate.js';
-
-const LOCATION = 'europe-west9';
-const MODEL = 'gemini-2.5-flash-lite';
-
-async function accessToken(): Promise<string> {
-  try {
-    const r = await fetch(
-      'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token',
-      { headers: { 'Metadata-Flavor': 'Google' }, signal: AbortSignal.timeout(1500) },
-    );
-    if (r.ok) return ((await r.json()) as { access_token: string }).access_token;
-  } catch {
-    /* not on Cloud Run */
-  }
-  const sa = JSON.parse(readFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS ?? '', 'utf8'));
-  const now = Math.floor(Date.now() / 1000);
-  const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
-  const unsigned = `${b64({ alg: 'RS256', typ: 'JWT' })}.${b64({
-    iss: sa.client_email,
-    scope: 'https://www.googleapis.com/auth/cloud-platform',
-    aud: sa.token_uri,
-    exp: now + 3600,
-    iat: now,
-  })}`;
-  const sig = createSign('RSA-SHA256').update(unsigned).sign(sa.private_key, 'base64url');
-  const r = await fetch(sa.token_uri, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-      assertion: `${unsigned}.${sig}`,
-    }),
-  });
-  return ((await r.json()) as { access_token: string }).access_token;
-}
+import { readableAvailability, writeReply } from './negotiate.js';
 
 export type ReplyKind = 'visit_offered' | 'refused' | 'question' | 'other';
 
@@ -70,21 +39,14 @@ export interface Classification {
 }
 
 /**
- * What did the agency actually say?
+ * The four categories, and the line between them.
  *
  * `visit_offered` is reserved for a concrete proposal. "Nous reviendrons vers
  * vous" is not a visit, and treating it as one would put a fiction in somebody's
  * calendar - which is worse than missing a real appointment, because they will
  * stop trusting the calendar.
  */
-export async function classify(
-  message: { from: string; subject: string; body: string },
-  project: string,
-  now = new Date(),
-): Promise<Classification> {
-  const prompt = `Tu analyses la réponse d'une agence immobilière à une candidature locative.
-
-Date du jour : ${now.toISOString().slice(0, 10)}
+const CLASSIFIER_INSTRUCTION = `Tu analyses la réponse d'une agence immobilière à une candidature locative.
 
 Classe le message dans exactement une catégorie :
 - "visit_offered" : UNIQUEMENT si une visite est proposée avec un créneau concret (date, ou date+heure). "Nous reviendrons vers vous" n'est PAS une visite.
@@ -93,66 +55,60 @@ Classe le message dans exactement une catégorie :
 - "other" : accusé de réception, message automatique, hors sujet.
 
 Si et seulement si "visit_offered" avec un créneau : donne visitStartISO en ISO 8601 avec fuseau +02:00. Sinon null.
-Si "question" : propose une réponse courte, polie, en français, que le candidat pourra relire. Sinon null.
+Si "question" : propose une réponse courte, polie, en français, que le candidat pourra relire. Sinon null.`;
 
-Message :
+const ClassificationSchema = z.object({
+  kind: z.enum(['visit_offered', 'refused', 'question', 'other']),
+  visitStartISO: z.string().nullable().describe('ISO 8601 avec fuseau, ou null.'),
+  visitLocation: z.string().nullable().describe("L'adresse de la visite, ou null."),
+  summary: z.string().describe('Une phrase : ce que dit le message.'),
+  suggestedReply: z.string().nullable().describe('Une réponse à faire relire, ou null.'),
+});
+
+/** Built once per process. No tools: reading a message is not an errand. */
+let classifier: { project: string; agent: LlmAgent } | null = null;
+
+function replyClassifier(project: string): LlmAgent {
+  if (classifier?.project === project) return classifier.agent;
+  const agent = new LlmAgent({
+    name: 'prems_reply_classifier',
+    model: gemini(project),
+    description: "Décide ce qu'une agence immobilière vient de répondre à une candidature.",
+    instruction: CLASSIFIER_INSTRUCTION,
+    generateContentConfig: { temperature: 0.1, maxOutputTokens: 700 },
+    outputSchema: ClassificationSchema,
+  });
+  classifier = { project, agent };
+  return agent;
+}
+
+/**
+ * What did the agency actually say?
+ *
+ * The schema is enforced by the API rather than requested in prose, so a
+ * malformed answer is no longer one of the ways this fails. Everything that
+ * remains — a date that does not parse, a date in the past, a category the
+ * model made up — is checked here, because a response schema constrains the
+ * shape of an answer and says nothing about whether it is true.
+ */
+export async function classify(
+  message: { from: string; subject: string; body: string },
+  project: string,
+  now = new Date(),
+): Promise<Classification> {
+  const parsed = await runAgentJson<Partial<Classification>>({
+    agent: replyClassifier(project),
+    prompt: `Date du jour : ${now.toISOString().slice(0, 10)}
+
 De : ${message.from}
 Objet : ${message.subject}
-${message.body.slice(0, 3000)}
+${message.body.slice(0, 3000)}`,
+    timeoutMs: 20_000,
+  });
 
-Réponds en JSON strict :
-{"kind":"...","visitStartISO":null,"visitLocation":null,"summary":"...","suggestedReply":null}`;
-
-  try {
-    const token = await accessToken();
-    const r = await fetch(
-      `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${project}/locations/${LOCATION}/publishers/google/models/${MODEL}:generateContent`,
-      {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.1,
-            maxOutputTokens: 700,
-            responseMimeType: 'application/json',
-          },
-        }),
-        signal: AbortSignal.timeout(20000),
-      },
-    );
-    if (!r.ok) throw new Error(`vertex ${r.status}`);
-    const j = (await r.json()) as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-    };
-    const text = j.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error('réponse vide');
-    const parsed = JSON.parse(text) as Partial<Classification>;
-
-    const kind: ReplyKind =
-      parsed.kind === 'visit_offered' ||
-      parsed.kind === 'refused' ||
-      parsed.kind === 'question'
-        ? parsed.kind
-        : 'other';
-
-    // A date the model invented, or one in the past, is not a booking.
-    let start: string | null = null;
-    if (kind === 'visit_offered' && parsed.visitStartISO) {
-      const t = Date.parse(parsed.visitStartISO);
-      if (Number.isFinite(t) && t > now.getTime() - 3600_000) start = new Date(t).toISOString();
-    }
-
-    return {
-      kind,
-      visitStartISO: start,
-      visitLocation: parsed.visitLocation ?? null,
-      summary: (parsed.summary ?? '').slice(0, 500),
-      suggestedReply: kind === 'question' ? (parsed.suggestedReply ?? null) : null,
-    };
-  } catch {
-    // An unclassifiable message is 'other', never a guess. Guessing here writes
-    // fiction into somebody's calendar.
+  // An unclassifiable message is 'other', never a guess. Guessing here writes
+  // fiction into somebody's calendar.
+  if (!parsed) {
     return {
       kind: 'other',
       visitStartISO: null,
@@ -161,6 +117,28 @@ Réponds en JSON strict :
       suggestedReply: null,
     };
   }
+
+  const kind: ReplyKind =
+    parsed.kind === 'visit_offered' || parsed.kind === 'refused' || parsed.kind === 'question'
+      ? parsed.kind
+      : 'other';
+
+  // A date the model invented, or one in the past, is not a booking. The schema
+  // constrains the shape of the answer; it says nothing about whether the date
+  // in it is real.
+  let start: string | null = null;
+  if (kind === 'visit_offered' && parsed.visitStartISO) {
+    const t = Date.parse(parsed.visitStartISO);
+    if (Number.isFinite(t) && t > now.getTime() - 3600_000) start = new Date(t).toISOString();
+  }
+
+  return {
+    kind,
+    visitStartISO: start,
+    visitLocation: parsed.visitLocation ?? null,
+    summary: (parsed.summary ?? '').slice(0, 500),
+    suggestedReply: kind === 'question' ? (parsed.suggestedReply ?? null) : null,
+  };
 }
 
 
@@ -229,7 +207,7 @@ async function maybeReply(args: {
     .eq('id', application.listing_id as string)
     .maybeSingle();
 
-  const body = await writeReply(
+  const decision = await writeReply(
     {
       agencyMessage: args.agencyMessage,
       history: (history ?? []).map((m) => `${m.author}: ${String(m.body).slice(0, 600)}`),
@@ -248,7 +226,7 @@ async function maybeReply(args: {
     },
     project,
   );
-  if (!body) return;
+  if (!decision.body) return;
 
   await client.from('messages').insert({
     user_id: userId,
@@ -257,7 +235,7 @@ async function maybeReply(args: {
     direction: 'out',
     author: 'agent',
     subject: args.subject.startsWith('Re:') ? args.subject : `Re: ${args.subject}`,
-    body,
+    body: decision.body,
     gmail_thread_id: args.threadId,
     status: 'pending',
   });
@@ -270,8 +248,10 @@ async function maybeReply(args: {
     payload: {
       kind: verdict.kind,
       // Recorded so "why did it propose Tuesday?" has an answer that is not a
-      // guess about what the model was thinking.
+      // guess about what the model was thinking: the availability it could have
+      // read, and the tools it actually called to read it.
       availability: readableAvailability((profile.availability as string[]) ?? []),
+      tool_calls: decision.toolCalls,
     },
   });
 }
