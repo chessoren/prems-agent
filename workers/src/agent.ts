@@ -49,34 +49,37 @@ export const LOCATION = process.env.GCP_REGION ?? 'europe-west9';
 export const MODEL = process.env.GCP_MODEL ?? 'gemini-3.7-flash';
 
 /**
- * Where each model is actually served from. Not a free choice.
+ * Where each model is actually served from. Measured, not read.
  *
- * A model and its region are one decision. `europe-west9` — where every job,
- * every byte of client data and the embedding model live — serves no Gemini 3.x
- * model at all. Past that, the two candidates differ on the thing that matters
- * most here:
+ * A model and its region are one decision, and this table is the only place
+ * that pairing exists. Every line below was established by calling the live
+ * endpoint on 2026-08-27 — `npm run gcp:models` — after two rounds of getting
+ * it wrong from documentation:
  *
- *  - `gemini-3.7-flash` runs on the **global** endpoint only. Global routes and
- *    processes anywhere in the world. There is no EU data residency and no
- *    in-region ML processing guarantee.
- *  - `gemini-3.5-flash` runs from `eu`, the European multi-region, and is the
- *    most recent model that keeps the request inside the European Union.
+ *   gemini-3.7-flash   global only. 404 in every European region tried.
+ *   gemini-3.5-flash   global, and europe-west3 (Frankfurt). Nowhere else in
+ *                      Europe — not west9, west4, west1, north1, southwest1.
+ *   gemini-2.5-flash   every European region tried, europe-west9 included.
  *
- * **What leaves the EU on the global endpoint is not abstract.** These prompts
- * carry a named person's employment status, net monthly income, the days they
- * are free, and the text of their private correspondence with a letting agency.
- * That is the trade being made, stated here so nobody has to infer it from an
- * env var. Switching back is two variables and no code:
+ * And the correction that matters most: **there is no `eu` endpoint.**
+ * `eu-aiplatform.googleapis.com` answers 400 "Invalid hostname". The European
+ * multi-region exists for Document AI, which is where the idea came from; it
+ * does not exist for Vertex AI. A fallback documented here for two commits
+ * would have failed on its first call.
  *
- *   GCP_MODEL=gemini-3.5-flash GCP_MODEL_LOCATION=eu
+ * **The trade, in one line.** `gemini-3.7-flash` runs on the global endpoint,
+ * which routes and processes anywhere in the world: no EU data residency, no
+ * in-region ML processing. These prompts carry a named person's employment,
+ * net monthly income, the days they are free, and their private correspondence
+ * with a letting agency. Two ways back, both two variables and no code:
  *
- * Verify both against the live endpoint before any deploy — `npm run gcp:models`
- * probes every pair and tells you which ones answer. Documentation has been
- * wrong about this repository's model twice already.
+ *   GCP_MODEL=gemini-3.5-flash GCP_MODEL_LOCATION=europe-west3   # EU, newest
+ *   GCP_MODEL=gemini-2.5-flash GCP_MODEL_LOCATION=europe-west9   # Paris, with the jobs
  */
 const SERVED_FROM: Record<string, string> = {
   'gemini-3.7-flash': 'global',
-  'gemini-3.5-flash': 'eu',
+  'gemini-3.5-flash': 'europe-west3',
+  'gemini-2.5-flash': 'europe-west9',
 };
 
 export const MODEL_LOCATION = process.env.GCP_MODEL_LOCATION ?? SERVED_FROM[MODEL] ?? 'global';

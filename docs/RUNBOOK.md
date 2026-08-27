@@ -215,9 +215,31 @@ fichier ne contient d'identifiant de modèle.
 |---|---|---|---|
 | Agents | `gemini-3.7-flash` | `global` | **aucune** — traitement mondial |
 | Embeddings | `text-multilingual-embedding-002` | `europe-west9` | UE, Paris |
-| *Repli* | `gemini-3.5-flash` | `eu` | UE, multi-région |
+| *Repli UE* | `gemini-3.5-flash` | `europe-west3` | UE, Francfort |
+| *Repli Paris* | `gemini-2.5-flash` | `europe-west9` | UE, avec les jobs |
 
-### Ne posez plus la question, exécutez-la
+#### Mesuré, plus supposé
+
+Relevé le 27 août 2026 en appelant chaque endpoint, `npm run gcp:models` :
+
+| | west9 | west4 | west3 | west1 | north1 | southwest1 | global |
+|---|---|---|---|---|---|---|---|
+| `gemini-3.7-flash` | 404 | 404 | 404 | 404 | 404 | 404 | **200** |
+| `gemini-3.6-flash` | 404 | 404 | 404 | 404 | 404 | 404 | — |
+| `gemini-3.5-flash` | 404 | 404 | **200** | 404 | 404 | 404 | **200** |
+| `gemini-3-flash` | 404 | 404 | 404 | 404 | 404 | 404 | — |
+| `gemini-2.5-flash` | **200** | **200** | **200** | **200** | **200** | **200** | — |
+
+Trois conclusions, toutes contraires à ce que ce dépôt affirmait :
+
+1. **`eu` n'existe pas pour Vertex AI.** `eu-aiplatform.googleapis.com` répond
+   400 « Invalid hostname ». La multi-région européenne existe pour Document AI
+   — c'est de là que l'idée venait — et pas pour Vertex. Le repli documenté
+   pendant deux commits aurait échoué au premier appel.
+2. **La famille 3.x est mondiale, à une exception près** : `gemini-3.5-flash`
+   répond depuis `europe-west3` (Francfort). C'est le modèle le plus récent
+   qu'on puisse servir depuis l'Union européenne.
+3. **`europe-west9` ne sert aucun modèle 3.x.** Paris s'arrête à 2.5.
 
 ```bash
 npm run gcp:models              # sonde chaque paire modèle × région
@@ -225,66 +247,41 @@ npm run gcp:models -- --strict  # sort en 1 si la paire configurée ne répond p
 npm run gcp:models -- --dry-run # affiche les endpoints, n'appelle rien
 ```
 
-Ça sonde cinq paires en un appel chacune et rend un tableau : ce qui répond, ce
-qui n'existe pas là, ce à quoi il manque un droit IAM. À passer avant tout
-déploiement, et dans la CI de déploiement si vous en ajoutez une — c'est trois
-secondes contre une journée de jobs qui échouent en boucle.
+Prérequis : ADC (`gcloud auth application-default login`, `GOOGLE_APPLICATION_CREDENTIALS`
+ou `GCP_SERVICE_ACCOUNT_JSON`) et l'API Vertex activée.
 
-Prérequis : `gcloud auth application-default login` (ou
-`GOOGLE_APPLICATION_CREDENTIALS`), et l'API Vertex activée
-(`gcloud services enable aiplatform.googleapis.com`).
+#### L'erreur qui a coûté le plus de temps
 
-### Ce qui est établi, et ce qui ne l'est pas
+« Gemini 3.5 Flash-Lite n'existe pas » était **vrai de la variante et faux de la
+famille** : `gemini-3-flash-lite` répond bien 404, mais `gemini-3.5-flash`
+existe. Les workers sont restés deux générations en arrière sur cette
+déduction. Un 404 sur une variante ne dit rien de la famille — et c'est
+exactement pourquoi `gcp:models` existe et pourquoi il faut le lancer plutôt
+que de lire une page de documentation.
 
-**Établi — l'erreur qui a coûté le plus de temps.** « Gemini 3.5 Flash-Lite »
-n'existe pas : la famille Flash-Lite s'arrête à `gemini-2.5-flash-lite`, et
-`gemini-3-flash-lite` répond 404. La conclusion qu'on en avait tirée — « la
-famille 3.x n'existe pas » — était fausse, et a laissé les workers deux
-générations en arrière. **Un 404 sur une variante ne dit rien de la famille.**
-C'est précisément pour ça que `gcp:models` existe.
+#### La décision de résidence, en clair
 
-**Établi.** `text-multilingual-embedding-002` répond en 768 dimensions depuis
-`europe-west9` — la dimension figée dans `listing_embeddings`. Le corpus est
-français, là où `text-embedding-004` est entraîné majoritairement sur de
-l'anglais.
-
-**Non établi depuis une machine de développement : rien sur les régions Gemini.**
-Aucun identifiant GCP n'y est disponible, donc le tableau ci-dessus vient de la
-documentation. Ce qu'elle dit :
-
-- `gemini-3.7-flash` n'est servi que par l'endpoint **global**. Global route et
-  traite n'importe où dans le monde : ni résidence des données, ni garantie de
-  traitement dans une région donnée.
-- `gemini-3.5-flash` est servi depuis `eu` et reste le modèle le plus récent qui
-  garde la requête dans l'Union européenne.
-- **Aucun** modèle Gemini 3.x n'est documenté pour `europe-west9`. Même
-  situation que les processeurs Document AI, et pour la même raison.
-
-### La décision de résidence, en clair
-
-Le produit est passé sur `gemini-3.7-flash`, donc sur l'endpoint global. Ce qui
+Le produit tourne sur `gemini-3.7-flash`, donc sur l'endpoint global. Ce qui
 sort de l'UE n'est pas abstrait : ces prompts portent le nom d'une personne, sa
 situation professionnelle, son revenu net mensuel, ses disponibilités, et le
 texte de sa correspondance privée avec une agence.
 
-C'est un arbitrage, pas un oubli. Il est écrit ici, dans `agent.ts`, et **loggé
-à chaque run** qui parle à un modèle :
+C'est un arbitrage, pas un oubli. Il est loggé à chaque run qui parle à un
+modèle :
 
 ```
 modèle: gemini-3.7-flash @ global — AUCUNE résidence des données — traitement mondial
 ```
 
-Revenir en arrière ne demande aucun code, seulement deux variables sur les jobs :
+Revenir en arrière ne demande aucun code, seulement deux variables sur les deux
+jobs concernés (`prems-enrich` ne fait que des embeddings, restés à Paris) :
 
 ```bash
-gcloud run jobs update prems-apply --region europe-west9 \
-  --update-env-vars GCP_MODEL=gemini-3.5-flash,GCP_MODEL_LOCATION=eu
-gcloud run jobs update prems-inbox --region europe-west9 \
-  --update-env-vars GCP_MODEL=gemini-3.5-flash,GCP_MODEL_LOCATION=eu
+for J in prems-apply prems-inbox; do
+  gcloud run jobs update $J --region europe-west9 \
+    --update-env-vars GCP_MODEL=gemini-3.5-flash,GCP_MODEL_LOCATION=europe-west3
+done
 ```
-
-Les deux seuls jobs concernés sont ceux-là : `prems-enrich` ne fait que des
-embeddings, qui sont restés à Paris.
 
 **À décider avant de prendre un client payant**, et à écrire dans la politique
 de confidentialité si le global est conservé : un service qui traite des

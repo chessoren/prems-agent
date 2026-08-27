@@ -111,7 +111,7 @@ through. One way out of this system, one place a send can fail.
 | Cloud Run Jobs | The six workers. One image; `MODE` selects the job |
 | Cloud Run | `prems-api` — document OCR, the only service holding secrets |
 | Cloud Scheduler | Six cadences, one per job |
-| Vertex AI | `gemini-3.7-flash` (global endpoint) and `text-multilingual-embedding-002` (`europe-west9`) |
+| Vertex AI | `gemini-3.7-flash` (global endpoint) and `text-multilingual-embedding-002` (`europe-west9`) — both verified against the live API |
 | Document AI | ID documents and payslips, EU multi-region processors |
 | Secret Manager | Service-role and API keys, mounted at run time |
 | Artifact Registry + Cloud Build | `workers/cloudbuild.yaml` is the whole deployment |
@@ -200,16 +200,14 @@ interesting part.
 - **One source.** The sites behind anti-bot (LeBonCoin, SeLoger, PAP) wait on a
   proxy purchase. Adding a source is an adapter plus a row in `sources` — never
   a deployment.
-- **No model call has been verified from a development machine.** No GCP
-  credentials are available there, so the model/region pairing comes from
-  documentation. `npm run gcp:models` probes all five pairs in one call each and
-  prints what answers — run it before deploying.
 - **The model runs on the global endpoint, so there is no EU data residency.**
-  `gemini-3.7-flash` is served from `global` only; the prompts carry a named
-  person's income, availability and private correspondence. The EU-resident
-  fallback is `GCP_MODEL=gemini-3.5-flash GCP_MODEL_LOCATION=eu` — two variables,
-  no code, no redeploy. This is a decision to take deliberately before the first
-  paying client, not a detail. See [`docs/RUNBOOK.md`](docs/RUNBOOK.md), §4.
+  Measured, not assumed: `gemini-3.7-flash` answers from `global` and 404s in
+  all six European regions tried. The prompts carry a named person's income,
+  availability and private correspondence. The EU-resident fallback is
+  `GCP_MODEL=gemini-3.5-flash GCP_MODEL_LOCATION=europe-west3` (Frankfurt, the
+  only European region serving a 3.x model) — two variables, no code, no
+  redeploy. A decision to take deliberately before the first paying client, not
+  a detail. Full matrix in [`docs/RUNBOOK.md`](docs/RUNBOOK.md), §4.
 
 ## Provenance
 

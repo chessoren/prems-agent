@@ -29,18 +29,21 @@ l'interface de la prochaine session sera une lecture de `events`, rien de plus.
 | Boîte mail & agenda du client | Composio (Gmail, Google Calendar) | Voir « Le canal », plus bas |
 | Les trois agents | Agent Development Kit (`@google/adk`) | Des outils déclarés, pas un prompt qui demande poliment |
 | Modèle | Vertex AI, `gemini-3.7-flash`, endpoint `global` | Le choix entre quatre outils est là où les modèles plus anciens cèdent |
+| Repli UE | `gemini-3.5-flash`, `europe-west3` | Le plus récent servi depuis l'Union européenne |
 | Embeddings | `text-multilingual-embedding-002`, 768 dim, `europe-west9` | Corpus français |
 
 Une seule image Docker sert les cinq jobs ; seul `MODE` (ou `SOURCE_SLUG`) diffère.
 Ajouter une source ou un mode n'est jamais un nouveau déploiement.
 
 **Une ligne de ce tableau est un arbitrage, pas un choix technique.**
-`gemini-3.7-flash` n'est servi que par l'endpoint global : les prompts — nom,
-situation professionnelle, revenu net, disponibilités, correspondance privée
-avec l'agence — sortent de l'Union européenne. Le repli à résidence UE est
-`gemini-3.5-flash` en région `eu`, et c'est deux variables d'environnement, pas
-une ligne de code. Les embeddings, eux, n'ont jamais quitté Paris. Détail,
-commandes et vérification : `RUNBOOK.md`, §4.
+`gemini-3.7-flash` n'est servi que par l'endpoint global — vérifié : 404 dans
+les six régions européennes essayées. Les prompts — nom, situation
+professionnelle, revenu net, disponibilités, correspondance privée avec
+l'agence — sortent donc de l'Union européenne. Le repli à résidence UE est
+`gemini-3.5-flash` en `europe-west3` (Francfort), le modèle le plus récent
+servi depuis l'UE ; deux variables d'environnement, pas une ligne de code. Les
+embeddings, eux, n'ont jamais quitté Paris. La matrice complète, mesurée, est
+dans `RUNBOOK.md` §4.
 
 ![Architecture](architecture.svg)
 

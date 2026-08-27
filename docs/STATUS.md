@@ -37,19 +37,21 @@ Les garde-fous du négociateur sont en code et non dans le prompt ; les cinq cas
 sont rejoués sans modèle dans `workers/test/negotiate.test.ts`. Détail dans
 `ARCHITECTURE.md`.
 
-**Une réserve, et un arbitrage.**
+**Vérifié le 27 août, plus supposé.** `npm run gcp:models` appelle chaque
+endpoint et rend la matrice ; elle est dans `RUNBOOK.md` §4. Ce qu'elle a
+corrigé :
 
-La réserve : aucune paire modèle × région n'a été vérifiée depuis une machine de
-développement, faute d'identifiants GCP. `npm run gcp:models` sonde les cinq
-paires en trois secondes et rend un tableau — **à passer avant le prochain
-déploiement**.
+- `gemini-3.7-flash@global` **répond**. C'est ce que le code vise.
+- **`eu` n'existe pas pour Vertex AI** — 400 « Invalid hostname ». Le repli
+  documenté ici pendant deux commits aurait échoué au premier appel.
+- Le vrai repli à résidence UE est **`gemini-3.5-flash@europe-west3`**
+  (Francfort), seule région européenne à servir un modèle 3.x.
+- `europe-west9` s'arrête à 2.5 ; les embeddings y répondent toujours.
 
-L'arbitrage : `gemini-3.7-flash` n'existe que sur l'endpoint global, donc
-**sans résidence des données dans l'UE**. Les prompts portent le nom du client,
-son revenu, ses disponibilités et sa correspondance avec l'agence. Le repli
-(`gemini-3.5-flash` en `eu`) est deux variables sur les jobs, sans redéploiement.
-La décision est loggée à chaque run qui parle à un modèle, et détaillée dans
-`RUNBOOK.md` §4.
+**L'arbitrage.** L'endpoint global n'offre **aucune résidence des données**. Les
+prompts portent le nom du client, son revenu, ses disponibilités et sa
+correspondance avec l'agence. Le repli est deux variables sur `prems-apply` et
+`prems-inbox`, sans redéploiement. La décision est loggée à chaque run.
 
 ## Les chiffres, mesurés
 

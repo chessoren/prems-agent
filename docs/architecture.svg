@@ -180,5 +180,5 @@
   </g>
 
   <text x="446" y="458" font-size="11" fill="#8c959f">prems-apply et prems-inbox appellent les agents</text>
-  <text x="266" y="900" font-size="12" fill="#a15c00">⚠ Endpoint global : le modèle ne garantit pas de résidence UE. Repli à résidence UE : gemini-3.5-flash @ eu, deux variables.</text>
+  <text x="266" y="900" font-size="12" fill="#a15c00">⚠ Endpoint global : aucune résidence UE — mesuré, 404 dans les six régions européennes. Repli UE : gemini-3.5-flash @ europe-west3.</text>
 </svg>

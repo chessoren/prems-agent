@@ -45,9 +45,9 @@ const REGION = value('GCP_REGION', 'europe-west9');
 const CANDIDATES = dedupe([
   { model: MODEL, location: MODEL_LOCATION, note: 'configuré' },
   { model: 'gemini-3.7-flash', location: 'global', note: 'le plus récent' },
-  { model: 'gemini-3.7-flash', location: 'eu', note: 'résidence UE, si un jour' },
-  { model: 'gemini-3.5-flash', location: 'eu', note: 'repli à résidence UE' },
-  { model: 'gemini-3.5-flash', location: 'europe-west9', note: 'Paris, si un jour' },
+  { model: 'gemini-3.7-flash', location: 'europe-west3', note: 'UE, si un jour' },
+  { model: 'gemini-3.5-flash', location: 'europe-west3', note: 'repli UE, le plus récent' },
+  { model: 'gemini-2.5-flash', location: REGION, note: 'repli Paris, avec les jobs' },
   { model: EMBEDDING_MODEL, location: REGION, note: 'embeddings' },
 ]);
 
@@ -102,17 +102,28 @@ async function token() {
   return token;
 }
 
-/** What a status code means here, in the only terms that matter. */
+/**
+ * What a status code means here, in the only terms that matter.
+ *
+ * The 400 case is the one that cost time. `eu-aiplatform.googleapis.com` — the
+ * European multi-region, which exists for Document AI — is not a Vertex AI host
+ * at all, and answers 400 "Invalid hostname". Reading that as "the model is
+ * probably absent" sent us looking for the wrong thing entirely, so it now says
+ * what it is.
+ */
 function verdict(status, text) {
   if (status === 200) return { ok: true, say: 'répond' };
-  if (status === 404) return { ok: false, say: 'inexistant à cet endroit' };
+  if (status === 404) return { ok: false, say: 'modèle absent de cette région' };
+  if (status === 400 && /invalid hostname/i.test(text)) {
+    return { ok: false, say: "cette région n'existe pas pour Vertex AI" };
+  }
   if (status === 403) {
     const denied = /aiplatform|permission/i.test(text);
     return { ok: false, say: denied ? 'droits manquants (aiplatform.user ?)' : 'refusé' };
   }
   if (status === 401) return { ok: false, say: 'authentification refusée' };
   if (status === 429) return { ok: false, say: 'quota — le modèle existe pourtant' };
-  if (status === 400) return { ok: false, say: 'requête refusée (modèle probablement absent)' };
+  if (status === 400) return { ok: false, say: `requête refusée : ${firstMessage(text)}` };
   return { ok: false, say: `HTTP ${status}` };
 }
 
@@ -121,6 +132,15 @@ if (process.argv.includes('--dry-run')) {
   for (const candidate of CANDIDATES) console.log(`  ${url(candidate)}`);
   console.log('');
   process.exit(0);
+}
+
+/** The API's own explanation, when it has one worth repeating. */
+function firstMessage(text) {
+  try {
+    return String(JSON.parse(text)?.error?.message ?? '').slice(0, 60) || 'sans détail';
+  } catch {
+    return 'sans détail';
+  }
 }
 
 const bearer = await token().catch((error) => {
@@ -160,6 +180,7 @@ for (const candidate of CANDIDATES) {
 
 const configured = rows.find((r) => r.key === `${MODEL}@${MODEL_LOCATION}`);
 const euOption = rows.find((r) => r.ok && r.location !== 'global' && !isEmbedding(r.model));
+const residency = euOption ? `résidence ${euOption.location}` : 'aucun repli régional ne répond';
 
 console.log('');
 if (configured?.ok) {
@@ -168,7 +189,7 @@ if (configured?.ok) {
     console.log('⚠  Endpoint global : aucune résidence des données, traitement mondial.');
     if (euOption) {
       console.log(
-        `   Repli à résidence UE disponible : ` +
+        `   Repli disponible (${residency}) : ` +
           `GCP_MODEL=${euOption.model} GCP_MODEL_LOCATION=${euOption.location}`,
       );
     }
