@@ -57,7 +57,7 @@ dans le worker qui s'en sert.
 |---|---|---|---|
 | `prems_application_writer` | `draft.ts` | aucun | Le texte de la candidature |
 | `prems_reply_classifier` | `inbox.ts` | aucun | Ce que l'agence vient de dire |
-| `prems_negotiator` | `negotiate.ts` | 4 | S'il répond, et avec quel créneau |
+| `prems_negotiator` | `negotiate.ts` | 6 | S'il répond, avec quel créneau, et ce qu'il réclame |
 
 **Deux d'entre eux n'ont pas d'outils, et c'est un choix.** Écrire une
 candidature à partir de faits déjà réunis, ou ranger un message dans quatre
@@ -74,9 +74,18 @@ rien en aval ne pouvait distinguer ça d'une vraie proposition.
 | Outil | Ce qu'il rend |
 |---|---|
 | `get_client_availability` | Les créneaux enregistrés, ou l'instruction de demander à l'agence |
+| `check_calendar_conflicts` | **Lit l'agenda Google réel du client.** Pour chaque créneau proposé par l'agence : libre ou occupé, et par quoi. Agenda illisible → il le dit, plutôt que de rendre un agenda vide |
 | `get_client_facts` | Les faits connus sur le candidat — un champ absent est une information qu'on n'a pas |
+| `request_document` | Enregistre ce que l'agence réclame et que le client n'a pas fourni, pour que ça remonte dans l'onglet Agent |
 | `queue_reply` | Met le message en file. Idempotent : un second appel est refusé, pas appliqué |
 | `stand_down` | Ne rien envoyer, en disant pourquoi |
+
+**La négociation est bidirectionnelle.** L'agence écrit « mardi 14h ou jeudi
+10h ? » ; l'agent lit l'agenda, trouve le mardi pris, et répond « mardi je ne
+suis pas disponible, jeudi 10h me convient » — sans demander à personne, et sans
+jamais proposer un créneau qu'il n'a pas vérifié. La garde qui interdisait toute
+date calendaire est levée exactement dans ce cas : une date vérifiée dans
+l'agenda n'est plus une date inventée.
 
 Les appels effectivement passés sont enregistrés dans `events`, à côté du
 message produit. « Pourquoi a-t-il proposé mardi ? » a donc une réponse qui

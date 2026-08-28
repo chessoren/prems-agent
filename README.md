@@ -60,7 +60,7 @@ named in exactly one file, [`workers/src/agent.ts`](workers/src/agent.ts).
 |---|---|---|---|
 | `prems_application_writer` | `workers/src/draft.ts` | none | The text of the application |
 | `prems_reply_classifier` | `workers/src/inbox.ts` | none | What the agency just said |
-| `prems_negotiator` | `workers/src/negotiate.ts` | 4 | Whether to reply, and with which slot |
+| `prems_negotiator` | `workers/src/negotiate.ts` | 6 | Whether to reply, with which slot, and what to ask the client for |
 
 **Two of them have no tools, and that is a decision.** Writing an application
 from facts already gathered, or sorting a message into four categories, is not
@@ -76,9 +76,16 @@ tell that apart from a real proposal.
 | Tool | Returns |
 |---|---|
 | `get_client_availability` | The saved slots, or the instruction to ask the agency instead |
+| `check_calendar_conflicts` | **Reads the client's real Google Calendar.** Given the slots the agency proposed, says which are free and which clash, and with what. When the calendar cannot be read it says so rather than reporting an empty diary — an agent told "nothing is booked" by a failed lookup accepts a viewing the client cannot attend |
 | `get_client_facts` | What is known about the candidate — an absent field is information we do not have |
+| `request_document` | Records what the agency asked for and the client does not have, so it appears in the Agent tab with an upload next to it. Before this existed the agent wrote "je vous le transmets dans la journée" and nobody was ever told |
 | `queue_reply` | Queues the message. Idempotent: a second call is refused, not applied |
 | `stand_down` | Send nothing, and say why |
+
+This is what turns a one-way booking into a negotiation. The agency writes
+*"mardi 14h ou jeudi 10h ?"*; the agent reads the diary, finds the Tuesday
+taken, and answers *"mardi je ne suis pas disponible, jeudi 10h me convient"* —
+without asking anyone, and without ever proposing a slot it did not check.
 
 Which tools were actually called is written to `events` next to the message
 produced, so *"why did it propose Tuesday?"* has an answer that is not a guess
@@ -103,6 +110,24 @@ tools, with no model involved: [`workers/test/negotiate.test.ts`](workers/test/n
 **No agent sends anything.** `queue_reply` hands the text back to the caller,
 which writes it to `messages` — the same outbox a client's own replies go
 through. One way out of this system, one place a send can fail.
+
+## Google standards, named
+
+| Standard | Where it is used |
+|---|---|
+| **Gemini Function Calling** | The negotiator declares six tools and the model chooses between them each turn — `workers/src/negotiate.ts`. Declared through the ADK's `FunctionTool`, which compiles a zod schema into a Gemini function declaration; the model's choice and its arguments are validated before anything runs. |
+| **Agent Development Kit** (`@google/adk` 2.0) | The three agents, their runner, their sessions and their tool loop. |
+| **GenAI SDK** (`@google/genai`) | Embeddings, and the transport underneath the ADK. |
+| **Structured output** | The application writer and the reply classifier answer against a response schema, so malformed JSON is not one of the ways they fail. |
+| **Google Workspace — Gmail API** | Applications leave from the client's own mailbox and replies are read there. Per-user OAuth, brokered by Composio. |
+| **Google Workspace — Google Calendar API** | Read *and* write. The agent reads the client's real calendar to rule out a slot it cannot keep, and writes the confirmed viewing back. |
+| **Vertex AI** | `gemini-3.7-flash` for the agents, `text-multilingual-embedding-002` for the catalogue. |
+| **Document AI** | ID documents and payslips, EU multi-region processors. |
+| **Cloud Run Jobs** | The six workers. One image; `MODE` selects the job. |
+| **Cloud Run** | `prems-api`, the only service holding secrets. |
+| **Cloud Functions** (Supabase Edge) | `connect-mailbox` and the Stripe webhook — the two callbacks that must not run in a browser. |
+| **Cloud Scheduler** | Six cadences, one per job. |
+| **Secret Manager**, **Artifact Registry**, **Cloud Build** | Credentials, images, and the one file that is the whole deployment. |
 
 ## Google Cloud
 
@@ -143,7 +168,9 @@ npm run build               # dist/ — static files, hostable anywhere
 
 ```bash
 npm run db:provision        # schema, RLS, buckets — idempotent
-npm run db:migrate          # migrations in supabase/migrations
+npm run db:migrate          # migrations in supabase/migrations — 0017 adds the
+                            # agent_requests table and the agent_activity view
+                            # the Agent tab reads
 npm run db:seed             # 1 100 demo listings across 11 cities
 npm run db:inspect          # what is actually in there
 ```

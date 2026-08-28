@@ -20,6 +20,30 @@ Six jobs Cloud Run en `europe-west9`, une seule image, seul `MODE` diffère.
 Alerting : `pg_cron` toutes les 10 min, dans la base — une alarme sur le pipeline
 ne doit pas dépendre du pipeline.
 
+## L'agent vu par le client — onglet « Agent »
+
+`events` portait déjà chaque décision ; personne ne pouvait les lire. Le
+cinquième onglet de `/app` les affiche : ce que l'agent a regardé, ce qu'il en a
+conclu, quels outils il a appelés pour le conclure, et ce qu'il attend de toi.
+
+Deux choses y vivent :
+
+- **Ce qu'il attend**, en haut, parce qu'une demande ouverte bloque une
+  candidature alors qu'un journal ne bloque rien. Quand l'agence réclame une
+  pièce que le dossier n'a pas, l'agent appelle `request_document` : la demande
+  apparaît ici avec son motif et un dépôt de fichier à côté.
+- **Le journal**, une frise où une *pensée* (« a écarté un logement ») et une
+  *action* (« a envoyé la candidature ») ne se lisent pas pareil — confondre les
+  deux est ce qui rend un agent inquiétant.
+
+Les outils appelés sont affichés en clair sous chaque entrée : « a consulté ton
+agenda Google, a relu ton dossier, a rédigé la réponse ». C'est la différence
+entre une décision vérifiable et une décision qu'il faut croire.
+
+**Prérequis** : `npm run db:migrate` — la migration `0017` crée
+`agent_requests` et la vue `agent_activity`. Sans elle l'onglet s'affiche vide
+plutôt que de casser.
+
 ## Ce qui décide, dans ces jobs
 
 Trois agents, tous sur `gemini-3.7-flash` via Vertex AI, construits avec l'Agent

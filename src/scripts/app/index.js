@@ -26,12 +26,14 @@ import { h, appIcon, countBadge, toast } from './ui.js';
 import renderMatches from './matches.js';
 import renderVisits from './visits.js';
 import renderMessages from './messages.js';
+import renderAgent from './agent.js';
 import renderProfile from './profile.js';
 
 const TABS = [
   { id: 'accueil', label: 'Accueil', icon: 'home', render: renderMatches, title: 'Mes matchs' },
   { id: 'visites', label: 'Visites', icon: 'calendar', render: renderVisits, title: 'Visites' },
   { id: 'messages', label: 'Messages', icon: 'chat', render: renderMessages, title: 'Messages' },
+  { id: 'agent', label: 'Agent', icon: 'sparkle', render: renderAgent, title: 'Ton agent' },
   { id: 'profil', label: 'Profil', icon: 'user', render: renderProfile, title: 'Mon dossier' },
 ];
 

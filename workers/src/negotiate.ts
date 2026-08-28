@@ -37,6 +37,8 @@ import { FunctionTool, LlmAgent } from '@google/adk';
 import { z } from 'zod';
 
 import { gemini, runAgent } from './agent.js';
+import { findBusySlots } from './composio.js';
+import { db } from './db.js';
 
 /** The slot vocabulary the interface writes, decoded once here. */
 const DAYS: Record<string, string> = {
@@ -102,6 +104,12 @@ export interface NegotiateInput {
   readonly monthlyIncomeEur: number | null;
   /** 'question' | 'visit_offered' | 'other' - what the classifier decided. */
   readonly kind: string;
+  /** The client's Google Calendar connection, when they granted one. */
+  readonly calendarAccountId?: string | null;
+  /** Whose calendar, for Composio's per-user scoping. */
+  readonly userId?: string | null;
+  /** Which application this thread belongs to, so a request can point at it. */
+  readonly applicationId?: string | null;
 }
 
 /**
@@ -136,14 +144,25 @@ Ton objectif unique : obtenir une date de visite. Rien d'autre.
 
 Procédure, dans cet ordre :
 1. Appelle get_client_availability pour savoir quand le candidat peut visiter.
-2. Appelle get_client_facts si l'agence pose une question sur le candidat.
-3. Rédige, puis appelle queue_reply avec le message — ou stand_down si aucune réponse n'est utile.
+2. **Si l'agence propose un ou plusieurs créneaux précis**, appelle
+   check_calendar_conflicts avec ces créneaux. Il lit l'agenda réel du candidat
+   et te dit lesquels sont libres. Accepte un créneau libre, écarte un créneau
+   occupé en le disant simplement — « mardi je ne suis pas disponible, jeudi
+   10h me convient » — et n'accepte JAMAIS un créneau que l'outil dit occupé.
+3. Appelle get_client_facts si l'agence pose une question sur le candidat.
+4. Si l'agence réclame une pièce ou une information que get_client_facts ne
+   rend pas — pièce d'identité du garant, avis d'imposition, justificatif de
+   domicile — appelle request_document pour que le candidat en soit prévenu,
+   puis écris à l'agence que tu la transmets dans la journée. Ne dis jamais que
+   tu joins un document que tu n'as pas.
+5. Rédige, puis appelle queue_reply avec le message — ou stand_down si aucune
+   réponse n'est utile.
 
 Règles de rédaction :
 - 70 mots maximum. Une agence lit trois lignes.
 - Réponds précisément à ce qu'elle vient d'écrire. Si elle pose une question, réponds-y d'abord, en une phrase.
-- Ne propose que des créneaux rendus par get_client_availability. N'en invente aucun autre, ne donne pas de date calendaire précise (pas de "le 14"), reste sur les jours et les moments. Si l'outil ne rend aucune disponibilité, ne prétends pas en avoir : demande à l'agence de proposer un créneau, en te disant assez souple.
-- N'écris sur le candidat que ce que get_client_facts a rendu. Si l'agence demande autre chose — garant, date d'entrée, animal, composition du foyer — ne le fabrique pas : écris que tu le transmets dans la journée. Un mail envoyé au nom de quelqu'un ne peut pas contenir un fait inventé à son sujet.
+- Ne propose que des créneaux rendus par get_client_availability, et jamais un créneau que check_calendar_conflicts dit occupé. N'en invente aucun autre. Quand c'est toi qui proposes, reste sur les jours et les moments plutôt que sur une date calendaire ; quand tu réponds à un créneau précis proposé par l'agence, tu peux le reprendre tel quel s'il est libre. Si get_client_availability ne rend aucune disponibilité, ne prétends pas en avoir : demande à l'agence de proposer un créneau, en te disant assez souple.
+- N'écris sur le candidat que ce que get_client_facts a rendu. Si l'agence demande autre chose, ne le fabrique pas : appelle request_document, puis écris que tu le transmets dans la journée. Un mail envoyé au nom de quelqu'un ne peut pas contenir un fait inventé à son sujet.
 - Ton neutre, poli, direct. Aucun superlatif, aucune relance insistante.
 - Ne mentionne ni Prems, ni outil, ni automatisation, ni IA.
 - Termine par une formule courte et la signature du candidat.
@@ -161,6 +180,7 @@ function negotiator(
   input: NegotiateInput,
   project: string,
   sink: { reply: string | null },
+  asked: string[],
 ): LlmAgent {
   const slots = readableAvailability(input.availability);
 
@@ -193,6 +213,133 @@ function negotiator(
         loyer_mensuel_eur: input.rentEur,
       },
     }),
+  });
+
+  /**
+   * The read half of the calendar — the tool that makes the agent answer like
+   * somebody with a diary rather than somebody reciting a form.
+   *
+   * The dates come from the model, because the agency wrote them in prose and
+   * only the model can turn "mardi à 14h" into an instant. Everything after
+   * that is arithmetic: overlap is computed here, never asked for.
+   *
+   * When the calendar cannot be read it says so. An agent told "nothing is
+   * booked" by a failed lookup accepts a slot the client cannot keep, and that
+   * is the one outcome worse than not answering at all.
+   */
+  const checkConflicts = new FunctionTool({
+    name: 'check_calendar_conflicts',
+    description:
+      "Lit l'agenda réel du candidat et dit, pour chaque créneau proposé par l'agence, s'il est libre ou occupé. À appeler dès que l'agence propose une ou plusieurs dates précises.",
+    parameters: z.object({
+      slots: z
+        .array(
+          z.object({
+            startISO: z
+              .string()
+              .describe('Début du créneau, ISO 8601 avec fuseau, ex. 2026-09-03T14:00:00+02:00'),
+            durationMinutes: z
+              .number()
+              .describe("Durée supposée de la visite. 30 si l'agence ne la précise pas."),
+            label: z.string().describe("Le créneau tel que l'agence l'a écrit, ex. « mardi 14h »"),
+          }),
+        )
+        .describe("Les créneaux proposés par l'agence, dans l'ordre où elle les a écrits."),
+    }),
+    execute: async ({ slots }) => {
+      if (!input.calendarAccountId) {
+        return {
+          calendrier: 'non connecté',
+          consigne:
+            "L'agenda du candidat n'est pas connecté : appuie-toi uniquement sur get_client_availability et n'affirme rien sur ses autres rendez-vous.",
+        };
+      }
+      const times = slots.map((s) => Date.parse(s.startISO)).filter((t) => Number.isFinite(t));
+      if (times.length === 0) return { erreur: 'aucun créneau lisible' };
+
+      const from = new Date(Math.min(...times) - 3600_000).toISOString();
+      const to = new Date(Math.max(...times) + 24 * 3600_000).toISOString();
+
+      const { ok, busy, reason } = await findBusySlots(
+        input.calendarAccountId,
+        from,
+        to,
+        input.userId ?? null,
+      );
+      if (!ok) {
+        return {
+          calendrier: 'illisible',
+          raison: reason,
+          consigne:
+            "Impossible de vérifier l'agenda. N'accepte aucun créneau précis : propose de confirmer dans la journée.",
+        };
+      }
+
+      const verdicts = slots.map((slot) => {
+        const start = Date.parse(slot.startISO);
+        const end = start + Math.max(15, slot.durationMinutes || 30) * 60_000;
+        const clash = busy.find((b) => {
+          const bs = Date.parse(b.startISO);
+          const be = Date.parse(b.endISO);
+          return Number.isFinite(bs) && Number.isFinite(be) && bs < end && be > start;
+        });
+        return clash
+          ? { creneau: slot.label, libre: false, conflit: clash.summary ?? 'rendez-vous existant' }
+          : { creneau: slot.label, libre: true };
+      });
+
+      return { calendrier: 'lu', creneaux: verdicts };
+    },
+  });
+
+  /**
+   * What to do when the agency asks for something the file does not contain.
+   *
+   * The alternative, and what happened before this existed, is that the agent
+   * writes "je vous le transmets dans la journée" and nobody is ever told. The
+   * promise is kept by the client, so the client has to hear about it: the row
+   * written here is what the Agent tab shows, with an upload next to it.
+   */
+  const requestDocument = new FunctionTool({
+    name: 'request_document',
+    description:
+      "Prévient le candidat qu'une pièce ou une information lui est réclamée par l'agence et qu'elle manque à son dossier. À appeler avant de promettre quoi que ce soit à l'agence.",
+    parameters: z.object({
+      kind: z
+        .enum(['document', 'answer', 'decision'])
+        .describe('document = un fichier, answer = une phrase, decision = un oui ou un non.'),
+      docKind: z
+        .enum(['identite', 'domicile', 'revenus', 'garant'])
+        .nullable()
+        .describe("La catégorie du document attendu, ou null si ce n'est pas un document."),
+      label: z
+        .string()
+        .describe("Ce qui est demandé, en une ligne, tel qu'on le dirait au candidat."),
+      reason: z.string().describe("Pourquoi : ce que l'agence a écrit, en une phrase."),
+    }),
+    execute: async ({ kind, docKind, label, reason }) => {
+      if (!input.userId) return { enregistré: false, raison: 'client inconnu' };
+      try {
+        await db()
+          .from('agent_requests')
+          .insert({
+            user_id: input.userId,
+            application_id: input.applicationId ?? null,
+            kind,
+            doc_kind: kind === 'document' ? docKind : null,
+            label: label.slice(0, 200),
+            reason: reason.slice(0, 500),
+          });
+        asked.push(label);
+        return {
+          enregistré: true,
+          consigne:
+            "Le candidat est prévenu. Écris à l'agence que tu transmets la pièce dans la journée, sans prétendre qu'elle est déjà jointe.",
+        };
+      } catch {
+        return { enregistré: false, raison: 'écriture impossible' };
+      }
+    },
   });
 
   const queueReply = new FunctionTool({
@@ -229,7 +376,7 @@ function negotiator(
     description: 'Répond à une agence immobilière au nom du candidat, pour obtenir une visite.',
     instruction: NEGOTIATOR_INSTRUCTION,
     generateContentConfig: { temperature: 0.3, maxOutputTokens: 500 },
-    tools: [getAvailability, getFacts, queueReply, standDown],
+    tools: [getAvailability, checkConflicts, getFacts, requestDocument, queueReply, standDown],
   });
 }
 
@@ -246,10 +393,12 @@ export interface ReplyDecision {
   readonly body: string | null;
   /** Every tool the agent called, in order. Empty when it never ran. */
   readonly toolCalls: readonly string[];
+  /** What the agent asked the client for, if anything. */
+  readonly asked: readonly string[];
 }
 
 /** Nothing to send, and no agent involved in deciding that. */
-const SILENCE: ReplyDecision = { body: null, toolCalls: [] };
+const SILENCE: ReplyDecision = { body: null, toolCalls: [], asked: [] };
 
 /**
  * Write the next message in the thread.
@@ -265,6 +414,7 @@ export async function writeReply(input: NegotiateInput, project: string): Promis
 
   const slots = readableAvailability(input.availability);
   const sink: { reply: string | null } = { reply: null };
+  const asked: string[] = [];
 
   const message = `Historique de la conversation (du plus ancien au plus récent) :
 ${input.history.slice(-6).join('\n---\n').slice(0, 4000)}
@@ -275,12 +425,12 @@ ${input.agencyMessage.slice(0, 3000)}`;
   let toolCalls: readonly string[] = [];
   try {
     ({ toolCalls } = await runAgent({
-      agent: negotiator(input, project, sink),
+      agent: negotiator(input, project, sink, asked),
       prompt: message,
       timeoutMs: 30_000,
     }));
   } catch {
-    return { body: fallbackReply(input), toolCalls: [] };
+    return { body: fallbackReply(input), toolCalls: [], asked };
   }
 
   // An explicit stand-down is a decision, and it is kept. An empty turn is not:
@@ -290,22 +440,27 @@ ${input.agencyMessage.slice(0, 3000)}`;
     return {
       body: toolCalls.includes('stand_down') ? null : fallbackReply(input),
       toolCalls,
+      asked,
     };
   }
 
   // The client had availability and the agent never went to read it. Whatever
   // it wrote about dates, it did not get them from here — which is exactly the
   // failure the tools exist to make visible.
-  if (slots && !toolCalls.includes('get_client_availability')) {
-    return { body: fallbackReply(input), toolCalls };
+  const consultedSchedule =
+    toolCalls.includes('get_client_availability') || toolCalls.includes('check_calendar_conflicts');
+  if (slots && !consultedSchedule) {
+    return { body: fallbackReply(input), toolCalls, asked };
   }
 
   // A model that starts inventing calendar dates has stopped using the
   // availability it was given, and a date the client cannot keep is worse than
   // no date at all.
-  if (!slots && MONTH.test(sink.reply)) return { body: fallbackReply(input), toolCalls };
+  if (!slots && !toolCalls.includes('check_calendar_conflicts') && MONTH.test(sink.reply)) {
+    return { body: fallbackReply(input), toolCalls, asked };
+  }
 
-  return { body: sink.reply, toolCalls };
+  return { body: sink.reply, toolCalls, asked };
 }
 
 /** A calendar date in French. Written out once, because it is used as a guard. */
