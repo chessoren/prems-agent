@@ -225,6 +225,20 @@ npm run gcp:models          # which model answers, from which region
 npm run preflight           # is the product actually armed, link by link
 ```
 
+## Payments are switched off
+
+The pricing screens still show what the product will cost, but the button no
+longer sends anyone to Stripe: it opens access on the spot. Set
+`PUBLIC_PAYMENTS_ENABLED=true` to turn collection back on — the payment links,
+the billing portal and the webhook are untouched and resume as they were.
+
+Nothing in the pipeline is gated on a subscription: no worker and no SQL view
+reads one. The agent searches, applies and negotiates identically whether or not
+anyone has paid, which is why a switch in the browser is enough to stop charging
+without breaking anything downstream. `checkoutUrl()` returns null while it is
+off, so a middle-click or "open in new tab" — which never reach the click
+handler — fall back to the app rather than to a checkout page.
+
 ## What does not work yet
 
 Stated here rather than discovered by a reader, because the gap is the

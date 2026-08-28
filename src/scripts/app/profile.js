@@ -13,7 +13,13 @@
  */
 import * as store from '../../lib/prems/store.js';
 import * as agent from '../../lib/prems/agent.js';
-import { PLANS, portalUrl, checkoutUrl, startCheckout } from '../../lib/prems/billing.js';
+import {
+  PLANS,
+  PAYMENTS_ENABLED,
+  portalUrl,
+  checkoutUrl,
+  startCheckout,
+} from '../../lib/prems/billing.js';
 import * as mailbox from '../../lib/prems/mailbox.js';
 import * as billing from '../../lib/prems/billing.js';
 import {
@@ -401,6 +407,23 @@ function subscriptionBody(subscription) {
   const draft = store.get();
   const plan = subscription.isActive && subscription.plan ? PLANS[subscription.plan] : null;
   const portal = portalUrl();
+
+  // Encaissement coupé : ni facture à gérer, ni formule à vendre. Afficher un
+  // prix barré ou un portail vide serait pire que de le dire simplement.
+  if (!PAYMENTS_ENABLED) {
+    return h(
+      'div',
+      { class: 'pm-sub' },
+      h('p', { class: 'pm-sub__status' }, 'Accès ouvert'),
+      h(
+        'p',
+        { class: 'pm-sub__text' },
+        'Ton agent tourne sans limite et sans facturation. Rien ne t’est demandé ' +
+          'pour l’instant : les formules réapparaîtront ici le jour où l’encaissement ' +
+          'sera rouvert, et tu seras prévenu avant.',
+      ),
+    );
+  }
 
   const manage = portal
     ? h(

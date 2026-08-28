@@ -17,7 +17,7 @@ import * as inventory from '../../lib/prems/listings.js';
 import { upload, humanSize, validate } from '../../lib/prems/documents.js';
 import { client, ensureSession, isConfigured } from '../../lib/prems/supabase.js';
 import { scan as runScan, isAvailable as ocrAvailable } from '../../lib/prems/ocr.js';
-import { PLANS, checkoutUrl, startCheckout } from '../../lib/prems/billing.js';
+import { PLANS, PAYMENTS_ENABLED, checkoutUrl, startCheckout } from '../../lib/prems/billing.js';
 import * as mailbox from '../../lib/prems/mailbox.js';
 import { track } from '../../lib/prems/analytics.js';
 import {
@@ -1545,10 +1545,17 @@ function planCard(plan, { hero = false } = {}) {
           // client_reference_id on the session and on the webhook, so the plan
           // lands on the right user without anyone retyping an email. The
           // account id is carried by the billing module - see warm().
-          checkoutUrl(plan.id) || '/contact',
+          //
+          // Encaissement coupé : `checkoutUrl` rend null et le repli devient
+          // l'application. C'est aussi ce que suivent un clic milieu ou un
+          // « ouvrir dans un nouvel onglet », qui ne passent pas par onClick.
+          checkoutUrl(plan.id) || (PAYMENTS_ENABLED ? '/contact' : '/app'),
         onClick: (event) => {
           track('pricing', 'complete');
           startCheckout(plan.id, event);
+          // Le clic ouvre l'accès sur place : il faut donc conduire quelque
+          // part, puisque plus aucune redirection Stripe ne le fera.
+          if (!PAYMENTS_ENABLED) location.href = '/app';
         },
       },
       h('span', { class: 'ob-btn__inner' }, plan.cta),
