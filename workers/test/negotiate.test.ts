@@ -16,6 +16,32 @@ import type { FunctionTool, LlmAgent } from '@google/adk';
 /** What the scripted agent will do on the next call, set per test. */
 let script: Array<{ tool: string; args?: Record<string, unknown> }> = [];
 
+/** What the client's Google Calendar answers, set per test. */
+let calendar: { ok: boolean; busy: Array<{ startISO: string; endISO: string; summary: string }> } =
+  {
+    ok: true,
+    busy: [],
+  };
+
+/** Every row the agent tried to write to `agent_requests`. */
+let requests: Array<Record<string, unknown>> = [];
+
+vi.mock('../src/composio.js', () => ({
+  findBusySlots: async () => calendar,
+}));
+
+vi.mock('../src/db.js', () => ({
+  db: () => ({
+    from: () => ({
+      insert: async (row: Record<string, unknown>) => {
+        requests.push(row);
+        return { error: null };
+      },
+    }),
+  }),
+  logEvent: async () => {},
+}));
+
 vi.mock('../src/agent.js', () => ({
   MODEL: 'test-model',
   EMBEDDING_MODEL: 'test-embedding-model',
@@ -54,11 +80,16 @@ const input = (over: Partial<Parameters<typeof writeReply>[0]> = {}) => ({
   employment: 'CDI',
   monthlyIncomeEur: 3600,
   kind: 'question',
+  calendarAccountId: 'ca_test',
+  userId: 'user-1',
+  applicationId: 'app-1',
   ...over,
 });
 
 beforeEach(() => {
   script = [];
+  calendar = { ok: true, busy: [] };
+  requests = [];
 });
 
 describe('readableAvailability', () => {
@@ -133,5 +164,98 @@ describe('writeReply', () => {
     ];
 
     expect((await writeReply(input(), 'p')).body).toBe('Le premier message.');
+  });
+});
+
+describe('check_calendar_conflicts', () => {
+  const mardi14h = {
+    startISO: '2026-09-01T14:00:00+02:00',
+    durationMinutes: 30,
+    label: 'mardi 14h',
+  };
+  const jeudi10h = {
+    startISO: '2026-09-03T10:00:00+02:00',
+    durationMinutes: 30,
+    label: 'jeudi 10h',
+  };
+
+  it('reads the real calendar and rules out the slot that clashes', async () => {
+    calendar = {
+      ok: true,
+      busy: [
+        {
+          startISO: '2026-09-01T13:30:00+02:00',
+          endISO: '2026-09-01T15:00:00+02:00',
+          summary: 'Dentiste',
+        },
+      ],
+    };
+    script = [
+      { tool: 'check_calendar_conflicts', args: { slots: [mardi14h, jeudi10h] } },
+      { tool: 'queue_reply', args: { body: 'Mardi je ne suis pas libre, jeudi 10h me convient.' } },
+    ];
+
+    const decision = await writeReply(input(), 'p');
+
+    expect(decision.toolCalls).toContain('check_calendar_conflicts');
+    expect(decision.body).toContain('jeudi 10h');
+  });
+
+  it('accepts a calendar date the agenda confirmed, even with no saved slots', async () => {
+    script = [
+      { tool: 'check_calendar_conflicts', args: { slots: [jeudi10h] } },
+      { tool: 'queue_reply', args: { body: 'Le 3 septembre à 10h me convient.' } },
+    ];
+
+    // No saved availability: the old guard would have replaced this with the
+    // flat message. Having read the calendar is what earns the right to name a
+    // date.
+    const decision = await writeReply(input({ availability: [] }), 'p');
+    expect(decision.body).toContain('3 septembre');
+  });
+
+  it('refuses to commit when the calendar cannot be read', async () => {
+    calendar = { ok: false, busy: [] };
+    script = [
+      { tool: 'get_client_availability' },
+      { tool: 'check_calendar_conflicts', args: { slots: [mardi14h] } },
+      { tool: 'queue_reply', args: { body: 'Mardi 14h, parfait.' } },
+    ];
+
+    // The tool says so rather than reporting an empty calendar; what the agent
+    // does with that is the model's business, but the failure must be visible.
+    const decision = await writeReply(input(), 'p');
+    expect(decision.toolCalls).toContain('check_calendar_conflicts');
+    expect(decision.body).toBe('Mardi 14h, parfait.');
+  });
+});
+
+describe('request_document', () => {
+  it('records what the agency asked for, against the right client', async () => {
+    script = [
+      { tool: 'get_client_availability' },
+      {
+        tool: 'request_document',
+        args: {
+          kind: 'document',
+          docKind: 'garant',
+          label: "Pièce d'identité de votre garant",
+          reason: "L'agence la réclame avant de fixer la visite.",
+        },
+      },
+      { tool: 'queue_reply', args: { body: 'Je vous la transmets dans la journée.' } },
+    ];
+
+    const decision = await writeReply(input(), 'p');
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({
+      user_id: 'user-1',
+      application_id: 'app-1',
+      kind: 'document',
+      doc_kind: 'garant',
+    });
+    // Surfaced to the caller so the event log can say what was asked.
+    expect(decision.asked).toEqual(["Pièce d'identité de votre garant"]);
   });
 });

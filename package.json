@@ -24,7 +24,10 @@
     "test": "vitest run",
     "ci": "npm run typecheck && npm run test && npm run build",
     "db:migrate": "NODE_USE_ENV_PROXY=1 node tools/supabase/migrate.mjs",
-    "db:inspect": "NODE_USE_ENV_PROXY=1 node tools/supabase/inspect.mjs"
+    "db:inspect": "NODE_USE_ENV_PROXY=1 node tools/supabase/inspect.mjs",
+    "gcp:models": "NODE_USE_ENV_PROXY=1 node tools/gcp-models.mjs",
+    "preflight": "NODE_USE_ENV_PROXY=1 node tools/preflight.mjs",
+    "db:demo": "NODE_USE_ENV_PROXY=1 node tools/supabase/seed-demo-agency.mjs"
   },
   "repository": {
     "type": "git",
@@ -40,6 +43,7 @@
   "devDependencies": {
     "@types/node": "^24.10.1",
     "cheerio": "^1.2.0",
+    "google-auth-library": "^11.0.2",
     "pixelmatch": "^7.2.0",
     "playwright": "^1.62.1",
     "pngjs": "^7.0.0",

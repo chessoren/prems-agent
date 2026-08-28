@@ -107,7 +107,7 @@ export async function extractCss($, assetMap, keepClasses = new Set()) {
           ' * Formatted and pruned to the classes this page actually uses; the',
           ' * declarations themselves are untouched. Class names are Framer hashes',
           ' * on purpose - they are the contract between this file and the markup.',
-          ' * Use the data-framer-name attributes in the components to navigate.',
+          ' * Use the data-name attributes in the components to navigate.',
           ' */',
         ].join('\n'),
       ),

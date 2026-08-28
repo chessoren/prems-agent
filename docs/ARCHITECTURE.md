@@ -28,11 +28,22 @@ l'interface de la prochaine session sera une lecture de `events`, rien de plus.
 | OCR pièces | Cloud Run `prems-api` | Porte des secrets |
 | Boîte mail & agenda du client | Composio (Gmail, Google Calendar) | Voir « Le canal », plus bas |
 | Les trois agents | Agent Development Kit (`@google/adk`) | Des outils déclarés, pas un prompt qui demande poliment |
-| Modèle | Vertex AI, `gemini-3.5-flash`, région `eu` | Le premier Flash qui choisit correctement entre quatre outils |
+| Modèle | Vertex AI, `gemini-3.7-flash`, endpoint `global` | Le choix entre quatre outils est là où les modèles plus anciens cèdent |
+| Repli UE | `gemini-3.5-flash`, `europe-west3` | Le plus récent servi depuis l'Union européenne |
 | Embeddings | `text-multilingual-embedding-002`, 768 dim, `europe-west9` | Corpus français |
 
 Une seule image Docker sert les cinq jobs ; seul `MODE` (ou `SOURCE_SLUG`) diffère.
 Ajouter une source ou un mode n'est jamais un nouveau déploiement.
+
+**Une ligne de ce tableau est un arbitrage, pas un choix technique.**
+`gemini-3.7-flash` n'est servi que par l'endpoint global — vérifié : 404 dans
+les six régions européennes essayées. Les prompts — nom, situation
+professionnelle, revenu net, disponibilités, correspondance privée avec
+l'agence — sortent donc de l'Union européenne. Le repli à résidence UE est
+`gemini-3.5-flash` en `europe-west3` (Francfort), le modèle le plus récent
+servi depuis l'UE ; deux variables d'environnement, pas une ligne de code. Les
+embeddings, eux, n'ont jamais quitté Paris. La matrice complète, mesurée, est
+dans `RUNBOOK.md` §4.
 
 ![Architecture](architecture.svg)
 
@@ -46,7 +57,7 @@ dans le worker qui s'en sert.
 |---|---|---|---|
 | `prems_application_writer` | `draft.ts` | aucun | Le texte de la candidature |
 | `prems_reply_classifier` | `inbox.ts` | aucun | Ce que l'agence vient de dire |
-| `prems_negotiator` | `negotiate.ts` | 4 | S'il répond, et avec quel créneau |
+| `prems_negotiator` | `negotiate.ts` | 6 | S'il répond, avec quel créneau, et ce qu'il réclame |
 
 **Deux d'entre eux n'ont pas d'outils, et c'est un choix.** Écrire une
 candidature à partir de faits déjà réunis, ou ranger un message dans quatre
@@ -63,9 +74,18 @@ rien en aval ne pouvait distinguer ça d'une vraie proposition.
 | Outil | Ce qu'il rend |
 |---|---|
 | `get_client_availability` | Les créneaux enregistrés, ou l'instruction de demander à l'agence |
+| `check_calendar_conflicts` | **Lit l'agenda Google réel du client.** Pour chaque créneau proposé par l'agence : libre ou occupé, et par quoi. Agenda illisible → il le dit, plutôt que de rendre un agenda vide |
 | `get_client_facts` | Les faits connus sur le candidat — un champ absent est une information qu'on n'a pas |
+| `request_document` | Enregistre ce que l'agence réclame et que le client n'a pas fourni, pour que ça remonte dans l'onglet Agent |
 | `queue_reply` | Met le message en file. Idempotent : un second appel est refusé, pas appliqué |
 | `stand_down` | Ne rien envoyer, en disant pourquoi |
+
+**La négociation est bidirectionnelle.** L'agence écrit « mardi 14h ou jeudi
+10h ? » ; l'agent lit l'agenda, trouve le mardi pris, et répond « mardi je ne
+suis pas disponible, jeudi 10h me convient » — sans demander à personne, et sans
+jamais proposer un créneau qu'il n'a pas vérifié. La garde qui interdisait toute
+date calendaire est levée exactement dans ce cas : une date vérifiée dans
+l'agenda n'est plus une date inventée.
 
 Les appels effectivement passés sont enregistrés dans `events`, à côté du
 message produit. « Pourquoi a-t-il proposé mardi ? » a donc une réponse qui

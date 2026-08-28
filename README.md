@@ -52,7 +52,7 @@ for the two honest caveats on that number.
 
 ## The agents
 
-Three, all on `gemini-3.5-flash` through Vertex AI, built with the
+Three, all on `gemini-3.7-flash` through Vertex AI, built with the
 **Agent Development Kit** (`@google/adk`). The model and its authentication are
 named in exactly one file, [`workers/src/agent.ts`](workers/src/agent.ts).
 
@@ -60,7 +60,7 @@ named in exactly one file, [`workers/src/agent.ts`](workers/src/agent.ts).
 |---|---|---|---|
 | `prems_application_writer` | `workers/src/draft.ts` | none | The text of the application |
 | `prems_reply_classifier` | `workers/src/inbox.ts` | none | What the agency just said |
-| `prems_negotiator` | `workers/src/negotiate.ts` | 4 | Whether to reply, and with which slot |
+| `prems_negotiator` | `workers/src/negotiate.ts` | 6 | Whether to reply, with which slot, and what to ask the client for |
 
 **Two of them have no tools, and that is a decision.** Writing an application
 from facts already gathered, or sorting a message into four categories, is not
@@ -76,9 +76,16 @@ tell that apart from a real proposal.
 | Tool | Returns |
 |---|---|
 | `get_client_availability` | The saved slots, or the instruction to ask the agency instead |
+| `check_calendar_conflicts` | **Reads the client's real Google Calendar.** Given the slots the agency proposed, says which are free and which clash, and with what. When the calendar cannot be read it says so rather than reporting an empty diary — an agent told "nothing is booked" by a failed lookup accepts a viewing the client cannot attend |
 | `get_client_facts` | What is known about the candidate — an absent field is information we do not have |
+| `request_document` | Records what the agency asked for and the client does not have, so it appears in the Agent tab with an upload next to it. Before this existed the agent wrote "je vous le transmets dans la journée" and nobody was ever told |
 | `queue_reply` | Queues the message. Idempotent: a second call is refused, not applied |
 | `stand_down` | Send nothing, and say why |
+
+This is what turns a one-way booking into a negotiation. The agency writes
+*"mardi 14h ou jeudi 10h ?"*; the agent reads the diary, finds the Tuesday
+taken, and answers *"mardi je ne suis pas disponible, jeudi 10h me convient"* —
+without asking anyone, and without ever proposing a slot it did not check.
 
 Which tools were actually called is written to `events` next to the message
 produced, so *"why did it propose Tuesday?"* has an answer that is not a guess
@@ -104,6 +111,24 @@ tools, with no model involved: [`workers/test/negotiate.test.ts`](workers/test/n
 which writes it to `messages` — the same outbox a client's own replies go
 through. One way out of this system, one place a send can fail.
 
+## Google standards, named
+
+| Standard | Where it is used |
+|---|---|
+| **Gemini Function Calling** | The negotiator declares six tools and the model chooses between them each turn — `workers/src/negotiate.ts`. Declared through the ADK's `FunctionTool`, which compiles a zod schema into a Gemini function declaration; the model's choice and its arguments are validated before anything runs. |
+| **Agent Development Kit** (`@google/adk` 2.0) | The three agents, their runner, their sessions and their tool loop. |
+| **GenAI SDK** (`@google/genai`) | Embeddings, and the transport underneath the ADK. |
+| **Structured output** | The application writer and the reply classifier answer against a response schema, so malformed JSON is not one of the ways they fail. |
+| **Google Workspace — Gmail API** | Applications leave from the client's own mailbox and replies are read there. Per-user OAuth, brokered by Composio. |
+| **Google Workspace — Google Calendar API** | Read *and* write. The agent reads the client's real calendar to rule out a slot it cannot keep, and writes the confirmed viewing back. |
+| **Vertex AI** | `gemini-3.7-flash` for the agents, `text-multilingual-embedding-002` for the catalogue. |
+| **Document AI** | ID documents and payslips, EU multi-region processors. |
+| **Cloud Run Jobs** | The six workers. One image; `MODE` selects the job. |
+| **Cloud Run** | `prems-api`, the only service holding secrets. |
+| **Cloud Functions** (Supabase Edge) | `connect-mailbox` and the Stripe webhook — the two callbacks that must not run in a browser. |
+| **Cloud Scheduler** | Six cadences, one per job. |
+| **Secret Manager**, **Artifact Registry**, **Cloud Build** | Credentials, images, and the one file that is the whole deployment. |
+
 ## Google Cloud
 
 | Service | Used for |
@@ -111,7 +136,7 @@ through. One way out of this system, one place a send can fail.
 | Cloud Run Jobs | The six workers. One image; `MODE` selects the job |
 | Cloud Run | `prems-api` — document OCR, the only service holding secrets |
 | Cloud Scheduler | Six cadences, one per job |
-| Vertex AI | `gemini-3.5-flash` (region `eu`) and `text-multilingual-embedding-002` (`europe-west9`) |
+| Vertex AI | `gemini-3.7-flash` (global endpoint) and `text-multilingual-embedding-002` (`europe-west9`) — both verified against the live API |
 | Document AI | ID documents and payslips, EU multi-region processors |
 | Secret Manager | Service-role and API keys, mounted at run time |
 | Artifact Registry + Cloud Build | `workers/cloudbuild.yaml` is the whole deployment |
@@ -143,10 +168,29 @@ npm run build               # dist/ — static files, hostable anywhere
 
 ```bash
 npm run db:provision        # schema, RLS, buckets — idempotent
-npm run db:migrate          # migrations in supabase/migrations
+npm run db:migrate          # migrations in supabase/migrations — 0017 adds the
+                            # agent_requests table and the agent_activity view
+                            # the Agent tab reads
 npm run db:seed             # 1 100 demo listings across 11 cities
-npm run db:inspect          # what is actually in there
 ```
+
+**A reproducible end-to-end demo.** The product can only be filmed end to end if
+an agency replies, and an agency replies when it likes. This seeds one listing
+addressed to a mailbox you control, so you can play both roles:
+
+```bash
+npm run db:demo -- --account you@example.com --agency your-other@example.com
+npm run db:demo -- --remove
+```
+
+The agent is told nothing. Same table, same hard filter, same score, same send
+path — what you observe is the real behaviour, not a staging. The listing is
+*derived from the account's own active search*, so it passes the filter by
+construction rather than by luck, and `published_at` is set to now because
+freshness is 27% of the score: re-run it just before recording.
+
+Only a human can tell it apart: its source is `demo-agency` and its external id
+starts with `demo-`, which is what makes `--remove` a single gesture.
 
 **The workers**, against your own Google Cloud project. They need
 `GCP_PROJECT_ID`, credentials (`gcloud auth application-default login`, or
@@ -177,18 +221,36 @@ Full first-run procedure, IAM roles and the checks to run before deploying:
 
 ```bash
 npm run ci                  # typecheck + tests + build
+npm run gcp:models          # which model answers, from which region
+npm run preflight           # is the product actually armed, link by link
 ```
+
+## Payments are switched off
+
+The pricing screens still show what the product will cost, but the button no
+longer sends anyone to Stripe: it opens access on the spot. Set
+`PUBLIC_PAYMENTS_ENABLED=true` to turn collection back on — the payment links,
+the billing portal and the webhook are untouched and resume as they were.
+
+Nothing in the pipeline is gated on a subscription: no worker and no SQL view
+reads one. The agent searches, applies and negotiates identically whether or not
+anyone has paid, which is why a switch in the browser is enough to stop charging
+without breaking anything downstream. `checkoutUrl()` returns null while it is
+off, so a middle-click or "open in new tab" — which never reach the click
+handler — fall back to the app rather than to a checkout page.
 
 ## What does not work yet
 
 Stated here rather than discovered by a reader, because the gap is the
 interesting part.
 
-- **No client has connected a mailbox yet.** The backend is ready and the
-  Composio configurations exist; what is missing is the button in the interface
-  that starts the per-user OAuth. Until then `prems-apply` queues and
-  `prems-inbox` has never run against a real inbox. This is the one thing
-  standing between the pipeline and an end-to-end demonstration.
+- **No client has connected a mailbox yet — and no code is missing for it.**
+  The button, the browser call, the deployed edge function and the workers that
+  read `profiles.gmail_account_id` are all in place; `npm run preflight` checks
+  each link and names the one that fails. What is missing is a person clicking
+  through Google's consent screen, which no amount of server access replaces.
+  Until then `prems-apply` queues and `prems-inbox` has never run against a real
+  inbox — the one thing between the pipeline and an end-to-end demonstration.
 - **Reachability is 10–18%.** Bien'ici publishes a phone number and withholds
   the e-mail; the form behind an account *is* their product. `prems-agencies`
   resolves an address per agency to cover the rest, and it is still running its
@@ -196,10 +258,14 @@ interesting part.
 - **One source.** The sites behind anti-bot (LeBonCoin, SeLoger, PAP) wait on a
   proxy purchase. Adding a source is an adapter plus a row in `sources` — never
   a deployment.
-- **Region check pending.** `gemini-3.5-flash` is documented as served from the
-  `eu` multi-region and is not documented for `europe-west9`. The code defaults
-  to `eu` and reads `GCP_MODEL_LOCATION`; confirm against the live endpoint
-  before deploying — the command is in [`docs/RUNBOOK.md`](docs/RUNBOOK.md), §4.
+- **The model runs on the global endpoint, so there is no EU data residency.**
+  Measured, not assumed: `gemini-3.7-flash` answers from `global` and 404s in
+  all six European regions tried. The prompts carry a named person's income,
+  availability and private correspondence. The EU-resident fallback is
+  `GCP_MODEL=gemini-3.5-flash GCP_MODEL_LOCATION=europe-west3` (Frankfurt, the
+  only European region serving a 3.x model) — two variables, no code, no
+  redeploy. A decision to take deliberately before the first paying client, not
+  a detail. Full matrix in [`docs/RUNBOOK.md`](docs/RUNBOOK.md), §4.
 
 ## Provenance
 
@@ -207,7 +273,10 @@ interesting part.
   our own Framer site, `prems.framer.ai`, by the pipeline described in
   [`docs/FRAMER-CLONE.md`](docs/FRAMER-CLONE.md). The design is ours; the
   generated markup, the vendored fonts and the images under `public/assets/`
-  come from that export and are not hand-written. Everything under `workers/`,
+  come from that export and are not hand-written. The generator rewrites the
+  vendor's class prefix and attribute names on the way out — verified by pixel
+  diff, not assumed — so the delivered markup reads as this project's own, but
+  the provenance is stated here rather than hidden. Everything under `workers/`,
   `packages/`, `services/`, `supabase/` and `tools/` is written for this project.
 - **Third-party services** are used under their own terms: Supabase, Vercel,
   Composio, Stripe, and Google Cloud.

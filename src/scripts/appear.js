@@ -51,8 +51,8 @@ export function initAppear(payload) {
     return (active && entry[active.hash]) || entry.default || null;
   };
 
-  const targets = [...document.querySelectorAll('[data-framer-appear-id]')]
-    .map((el) => ({ el, cfg: configFor(el.getAttribute('data-framer-appear-id')) }))
+  const targets = [...document.querySelectorAll('[data-appear]')]
+    .map((el) => ({ el, cfg: configFor(el.getAttribute('data-appear')) }))
     .filter((t) => t.cfg);
   if (!targets.length) return;
 

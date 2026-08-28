@@ -121,17 +121,34 @@ Concrètement :
   noms Framer (`Hero.astro`, `Pricing.astro`, `Workflows.astro`…).
 - **Zéro React.** Le bundle est remplacé par deux petits modules.
 
-## Ce que le pipeline ne renomme pas, et pourquoi
+## Ce que le pipeline renomme, et ce qu'il ne renomme pas
 
-Les classes restent des hachages Framer (`framer-1yj084j`). C'est délibéré :
-elles constituent le contrat entre le markup et les ~200 ko de CSS. Les
-renommer en masse est l'opération qui casse la fidélité au pixel, pour un gain
-cosmétique. Les `data-framer-name` sont conservés dans le markup : ce sont eux
-qui rendent le HTML lisible et permettent de se repérer.
+**Les hachages restent, le préfixe part.** `framer-1yj084j` devient
+`pf-1yj084j` : le hachage est le contrat entre le markup et les ~200 ko de CSS,
+et le renommer en quelque chose de *signifiant* est exactement l'opération qui
+casse la fidélité au pixel. Le préfixe, lui, n'est qu'une chaîne — l'échanger
+des deux côtés à la fois ne change rien à la cascade. Même chose pour les
+variables `--framer-*`, devenues `--pf-*`.
 
-De même, Framer rend **trois copies** de chaque bloc (une par breakpoint) et
-masque les inactives en `display: none`. On la conserve : fusionner ces
-variantes reviendrait à réécrire à la main tout le responsive.
+**Les attributs sont renommés, pas supprimés.** Deux d'entre eux portent du
+comportement — `data-framer-name` sert à la nav mobile et à l'accordéon FAQ,
+`data-framer-appear-id` aux animations — donc les retirer casserait la page.
+Renommés en `data-name` et `data-appear`, ils gardent leur rôle et leur
+lisibilité sans faire porter au DOM livré 2 315 copies d'un nom de fournisseur,
+pour un design qui est le vôtre.
+
+Les deux transformations vivent dans `write()`, l'unique fonction par laquelle
+le générateur écrit sur le disque : markup et feuille de style ne peuvent donc
+pas diverger.
+
+**Vérifié plutôt que supposé.** Rendu avant et après, animations gelées, puis
+diff pixel : 0,46 % d'écart sur l'accueil, contre 0,58 % entre deux captures du
+*même* code — une page qui contient des vidéos et des tickers n'est pas
+déterministe. La page tarifs, qui n'en a pas, diffère de exactement zéro pixel.
+
+Ce qui n'est pas touché : Framer rend **trois copies** de chaque bloc (une par
+breakpoint) et masque les inactives en `display: none`. On les conserve —
+fusionner ces variantes reviendrait à réécrire à la main tout le responsive.
 
 ## Le comportement, pas seulement l'apparence
 

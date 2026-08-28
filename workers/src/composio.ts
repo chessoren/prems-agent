@@ -163,6 +163,80 @@ export async function fetchEmails(
   );
 }
 
+/**
+ * What is already in the client's calendar, between two instants.
+ *
+ * This is the read half of the calendar, and it is what turns "je suis
+ * disponible mardi" into "mardi je ne peux pas, mais jeudi oui". Without it the
+ * agent can only recite the availability the client typed weeks ago, which goes
+ * stale the moment they book anything else.
+ *
+ * Composio has renamed this action across versions, so the slugs are tried in
+ * order rather than assumed. A wrong guess here would surface as an agent that
+ * silently never sees a conflict — the worst possible failure, because it looks
+ * exactly like an empty calendar.
+ */
+const FIND_EVENTS_SLUGS = [
+  'GOOGLECALENDAR_FIND_EVENT',
+  'GOOGLECALENDAR_EVENTS_LIST',
+  'GOOGLECALENDAR_LIST_EVENTS',
+];
+
+export interface BusySlot {
+  readonly startISO: string;
+  readonly endISO: string;
+  readonly summary: string | null;
+}
+
+export async function findBusySlots(
+  connectedAccountId: string,
+  fromISO: string,
+  toISO: string,
+  userId?: string | null,
+): Promise<{ ok: boolean; busy: BusySlot[]; reason?: string }> {
+  let lastError = 'aucun slug accepté';
+
+  for (const slug of FIND_EVENTS_SLUGS) {
+    try {
+      const result = await execute(
+        slug,
+        connectedAccountId,
+        {
+          timeMin: fromISO,
+          timeMax: toISO,
+          single_events: true,
+          order_by: 'startTime',
+          max_results: 50,
+        },
+        userId,
+      );
+      if (result.successful === false) {
+        lastError = result.error ?? `${slug} refusé`;
+        continue;
+      }
+
+      // Two shapes have been seen in the wild depending on the action version.
+      const raw = (result.data?.items ?? result.data?.events ?? []) as Array<Record<string, any>>;
+      const busy = raw
+        .map((e) => ({
+          startISO: String(e.start?.dateTime ?? e.start?.date ?? e.start ?? ''),
+          endISO: String(e.end?.dateTime ?? e.end?.date ?? e.end ?? ''),
+          summary: (e.summary as string) ?? null,
+        }))
+        .filter((e) => e.startISO && e.endISO);
+
+      return { ok: true, busy };
+    } catch (error) {
+      lastError = error instanceof Error ? error.message.slice(0, 120) : String(error);
+    }
+  }
+
+  // Never an empty list on failure. An agent told "nothing is booked" when the
+  // calendar could not be read will confidently accept a slot the client
+  // cannot keep, and that is worse than not answering.
+  return { ok: false, busy: [], reason: lastError };
+}
+
 export async function createCalendarEvent(
   connectedAccountId: string,
   event: {

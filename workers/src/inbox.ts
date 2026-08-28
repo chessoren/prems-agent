@@ -223,6 +223,10 @@ async function maybeReply(args: {
         ? Math.round((profile.monthly_income_cents as number) / 100)
         : null,
       kind: verdict.kind,
+      // Ce qui permet à l'agent de lire l'agenda et d'écrire une demande.
+      calendarAccountId: (profile.calendar_account_id as string) ?? null,
+      userId,
+      applicationId: application.id as string,
     },
     project,
   );
@@ -252,6 +256,10 @@ async function maybeReply(args: {
       // read, and the tools it actually called to read it.
       availability: readableAvailability((profile.availability as string[]) ?? []),
       tool_calls: decision.toolCalls,
+      // Ce que l'agent a réclamé au client, s'il a réclamé quelque chose.
+      asked_for: decision.asked,
+      // Écrit tel quel dans le journal que lit l'onglet Agent.
+      read_calendar: decision.toolCalls.includes('check_calendar_conflicts'),
     },
   });
 }

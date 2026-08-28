@@ -20,9 +20,33 @@ Six jobs Cloud Run en `europe-west9`, une seule image, seul `MODE` diffère.
 Alerting : `pg_cron` toutes les 10 min, dans la base — une alarme sur le pipeline
 ne doit pas dépendre du pipeline.
 
+## L'agent vu par le client — onglet « Agent »
+
+`events` portait déjà chaque décision ; personne ne pouvait les lire. Le
+cinquième onglet de `/app` les affiche : ce que l'agent a regardé, ce qu'il en a
+conclu, quels outils il a appelés pour le conclure, et ce qu'il attend de toi.
+
+Deux choses y vivent :
+
+- **Ce qu'il attend**, en haut, parce qu'une demande ouverte bloque une
+  candidature alors qu'un journal ne bloque rien. Quand l'agence réclame une
+  pièce que le dossier n'a pas, l'agent appelle `request_document` : la demande
+  apparaît ici avec son motif et un dépôt de fichier à côté.
+- **Le journal**, une frise où une *pensée* (« a écarté un logement ») et une
+  *action* (« a envoyé la candidature ») ne se lisent pas pareil — confondre les
+  deux est ce qui rend un agent inquiétant.
+
+Les outils appelés sont affichés en clair sous chaque entrée : « a consulté ton
+agenda Google, a relu ton dossier, a rédigé la réponse ». C'est la différence
+entre une décision vérifiable et une décision qu'il faut croire.
+
+**Prérequis** : `npm run db:migrate` — la migration `0017` crée
+`agent_requests` et la vue `agent_activity`. Sans elle l'onglet s'affiche vide
+plutôt que de casser.
+
 ## Ce qui décide, dans ces jobs
 
-Trois agents, tous sur `gemini-3.5-flash` via Vertex AI, construits avec l'Agent
+Trois agents, tous sur `gemini-3.7-flash` via Vertex AI, construits avec l'Agent
 Development Kit. Le modèle et son authentification sont nommés dans un seul
 fichier, `workers/src/agent.ts` — c'est là qu'on change de modèle, et nulle part
 ailleurs.
@@ -37,11 +61,21 @@ Les garde-fous du négociateur sont en code et non dans le prompt ; les cinq cas
 sont rejoués sans modèle dans `workers/test/negotiate.test.ts`. Détail dans
 `ARCHITECTURE.md`.
 
-**Une réserve qui vaut d'être écrite ici** : la région du modèle est lue dans la
-documentation, pas dans un appel. `gemini-3.5-flash` est servi depuis `eu` et
-n'est pas documenté pour `europe-west9`. Le code vise `eu` par défaut et lit
-`GCP_MODEL_LOCATION`. **La vérification est à faire avant le prochain
-déploiement** — la commande est dans `RUNBOOK.md`, §4.
+**Vérifié le 27 août, plus supposé.** `npm run gcp:models` appelle chaque
+endpoint et rend la matrice ; elle est dans `RUNBOOK.md` §4. Ce qu'elle a
+corrigé :
+
+- `gemini-3.7-flash@global` **répond**. C'est ce que le code vise.
+- **`eu` n'existe pas pour Vertex AI** — 400 « Invalid hostname ». Le repli
+  documenté ici pendant deux commits aurait échoué au premier appel.
+- Le vrai repli à résidence UE est **`gemini-3.5-flash@europe-west3`**
+  (Francfort), seule région européenne à servir un modèle 3.x.
+- `europe-west9` s'arrête à 2.5 ; les embeddings y répondent toujours.
+
+**L'arbitrage.** L'endpoint global n'offre **aucune résidence des données**. Les
+prompts portent le nom du client, son revenu, ses disponibilités et sa
+correspondance avec l'agence. Le repli est deux variables sur `prems-apply` et
+`prems-inbox`, sans redéploiement. La décision est loggée à chaque run.
 
 ## Les chiffres, mesurés
 
@@ -88,18 +122,34 @@ préfère un catalogue chaud d'avance à un crawl strictement à la demande.
 nouvelle exécute les outils et écrit les configurations ; elle est en Secret
 Manager et les jobs la montent. Le préflight passe.
 
-**1. Aucun client n'a encore connecté sa boîte — et c'est au front de le
-permettre.**
+**1. Aucun client n'a encore connecté sa boîte — et il n'y a plus rien à
+construire pour ça.**
 
-La connexion Gmail / Calendar est **par utilisateur de Prems**, déclenchée par
-un bouton dans l'interface : le produit envoie depuis la boîte du client et
-reçoit les réponses dans sa boîte. Pas de compte d'exploitant, pas de boîte
-partagée — ni techniquement, ni juridiquement souhaitable.
+Cette section a dit pendant plusieurs sessions qu'il manquait un bouton dans
+l'interface. **C'est faux, et ça l'était déjà.** La chaîne est complète et
+vérifiée :
 
-Le backend est prêt et n'attend que ce bouton : les deux configurations
-existent (Gmail `ac_BDCvl8Std_Rq`, Google Calendar `ac_H4AoPOZxFKAL`), et le
-worker d'envoi comme le lecteur de boîte lisent `profiles.gmail_account_id`
-par utilisateur, à chaque passage. Câblage dans `FRONTEND.md`, section
+| Maillon | Où | État |
+|---|---|---|
+| Le bouton « Connecter ma boîte mail » | `src/scripts/app/profile.js` › `mailboxSection` | écrit, rendu dans /app › Profil |
+| L'appel navigateur | `src/lib/prems/mailbox.js` | `start`, puis `finish` en polling |
+| La fonction serveur | `supabase/functions/connect-mailbox` | **déployée** — répond 401 sans jeton |
+| L'écriture du compte | même fonction | seulement si Composio dit `ACTIVE` |
+| La lecture par les workers | `apply.ts`, `inbox.ts` | `profiles.gmail_account_id`, à chaque passage |
+
+Les deux configurations Composio existent (Gmail `ac_BDCvl8Std_Rq`, Google
+Calendar `ac_H4AoPOZxFKAL`). `npm run preflight` interroge chacun de ces
+maillons et dit lequel manque.
+
+**Ce qui manque n'est donc pas du code : c'est un humain qui clique.** La
+connexion passe par l'écran de consentement Google, qui exige une personne
+réelle devant un navigateur réel — aucun accès serveur ne remplace ça.
+
+/app › Profil › Boîte mail › « Connecter ma boîte mail ». Deux minutes. À
+partir de là, `prems-apply` s'en aperçoit au tick suivant, soit deux minutes
+plus tard, et la première candidature part.
+
+Câblage détaillé dans `FRONTEND.md`, section
 « Connecter la boîte mail du client ».
 
 Tant que c'est nul, le pipeline n'engage rien : les matches restent `new` et

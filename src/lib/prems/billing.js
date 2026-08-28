@@ -119,7 +119,35 @@ export const PLANS = {
  * Empty until that page is switched on, and the UI says so rather than
  * offering a link that lands on an error.
  */
-export const portalUrl = () => env('PUBLIC_STRIPE_PORTAL_URL', '');
+/**
+ * L'encaissement, coupé.
+ *
+ * Les tarifs restent affichés — ils disent ce que le produit vaudra — mais le
+ * clic n'envoie plus personne chez Stripe : il ouvre l'accès sur place. C'est
+ * l'état voulu tant que le produit n'est pas prêt à prendre de l'argent, et il
+ * vaut mieux qu'un bouton qui encaisse pour un service qui ne peut pas encore
+ * tenir sa promesse.
+ *
+ * Rien de tout cela ne touche le pipeline : aucun worker, aucune vue SQL ne
+ * conditionne quoi que ce soit à l'abonnement. L'agent cherche, candidate et
+ * répond exactement pareil. La seule chose que l'abonnement gouverne est ce que
+ * l'interface affiche — d'où le fait qu'un interrupteur côté navigateur suffise
+ * à couper l'encaissement sans rien casser en aval.
+ *
+ * Remettre en marche : `PUBLIC_PAYMENTS_ENABLED=true` au build. Les liens
+ * Stripe, le portail et le webhook n'ont pas bougé et reprennent tels quels.
+ */
+export const PAYMENTS_ENABLED = env('PUBLIC_PAYMENTS_ENABLED', '') === 'true';
+
+/** L'accès ouvert d'office, tant que l'encaissement est coupé. */
+const FREE_ACCESS = {
+  plan: 'soldat',
+  status: 'active',
+  isActive: true,
+  currentPeriodEnd: null,
+};
+
+export const portalUrl = () => (PAYMENTS_ENABLED ? env('PUBLIC_STRIPE_PORTAL_URL', '') : '');
 
 /**
  * Send someone to Checkout.
@@ -131,6 +159,12 @@ export const portalUrl = () => env('PUBLIC_STRIPE_PORTAL_URL', '');
  * already given us.
  */
 export function checkoutUrl(planId, { reference, email } = {}) {
+  // Null plutôt qu'une URL : les boutons sont rendus en `href` ordinaires, et
+  // un href nul les fait retomber sur leur destination interne. Un clic milieu
+  // ou un « ouvrir dans un nouvel onglet » ne peut donc pas contourner la
+  // coupure et atterrir sur une page de paiement.
+  if (!PAYMENTS_ENABLED) return null;
+
   const plan = PLANS[planId];
   if (!plan?.url) return null;
 
@@ -178,9 +212,17 @@ export const reference = () => cachedUid;
  */
 export async function startCheckout(planId, event, { email } = {}) {
   if (event) event.preventDefault();
+
+  // Encaissement coupé : on ouvre l'accès au lieu de demander de l'argent.
+  // Rien n'est écrit dans `subscriptions` — cette table n'est écrite que par le
+  // webhook, et lui mentir laisserait une fausse trace de paiement le jour où
+  // l'encaissement reprendra.
+  if (!PAYMENTS_ENABLED) return { granted: true, plan: planId };
+
   await warm();
   const url = checkoutUrl(planId, { email });
   if (url) location.href = url;
+  return { granted: false, plan: planId };
 }
 
 /**
@@ -193,6 +235,11 @@ export async function startCheckout(planId, event, { email } = {}) {
  * to break the app.
  */
 export async function current() {
+  // Pas de requête du tout : sans encaissement il n'y a pas d'abonnement à
+  // lire, et interroger la base pour en déduire « inactif » ferait afficher un
+  // mur de paiement à quelqu'un à qui on vient de dire que c'était ouvert.
+  if (!PAYMENTS_ENABLED) return { ...FREE_ACCESS };
+
   const inactive = { plan: null, status: null, isActive: false, currentPeriodEnd: null };
   const supabase = client();
   if (!supabase) return inactive;
@@ -225,6 +272,8 @@ export async function current() {
  * removed.
  */
 export async function waitForActivation({ timeoutMs = 15000, intervalMs = 1500 } = {}) {
+  if (!PAYMENTS_ENABLED) return { ...FREE_ACCESS };
+
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const subscription = await current();

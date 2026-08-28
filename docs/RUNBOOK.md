@@ -151,55 +151,184 @@ plausible — la file en contenait encore 320 — mais c'est une inférence, pas
 lecture directe. La ligne `match: … ms` loggée par le job donnerait le chiffre
 exact ; elle n'apparaît pas dans le filtre de logs utilisé.
 
+### 3 bis. Donner l'accès GCP à un agent ou à une CI
+
+Le besoin revient : une machine qui n'est pas la vôtre doit pouvoir vérifier les
+modèles, lire les logs, déployer un job. Elle ne peut pas passer par un
+navigateur, donc `gcloud auth login` est hors de portée. Ce qu'elle peut
+recevoir, c'est une variable d'environnement.
+
+**Créer un compte de service dédié**, jamais le vôtre :
+
+```bash
+PROJECT=gen-lang-client-0781599139
+SA=prems-agent@$PROJECT.iam.gserviceaccount.com
+
+gcloud iam service-accounts create prems-agent \
+  --project=$PROJECT --display-name="Agent / CI"
+
+for ROLE in aiplatform.user run.admin logging.viewer \
+            artifactregistry.writer cloudbuild.builds.editor cloudscheduler.admin; do
+  gcloud projects add-iam-policy-binding $PROJECT \
+    --member="serviceAccount:$SA" --role="roles/$ROLE"
+done
+
+# Pour que les jobs déployés puissent endosser l'identité des workers.
+gcloud iam service-accounts add-iam-policy-binding \
+  prems-workers@$PROJECT.iam.gserviceaccount.com \
+  --project=$PROJECT --member="serviceAccount:$SA" \
+  --role=roles/iam.serviceAccountUser
+
+gcloud iam service-accounts keys create /tmp/prems-agent.json \
+  --iam-account=$SA --project=$PROJECT
+```
+
+**Transmettre la clé comme variable d'environnement**, pas comme fichier :
+`GCP_SERVICE_ACCOUNT_JSON` = le contenu entier de `/tmp/prems-agent.json`.
+`tools/lib/gcp-credentials.mjs` l'écrit dans un fichier 0600 hors du dépôt et
+pointe ADC dessus, donc `npm run preflight`, `npm run gcp:models` et
+`google-auth-library` fonctionnent sans autre réglage.
+
+**Ce que ça n'ouvre pas**, et c'est volontaire : ni facturation, ni IAM, ni
+Secret Manager. Un agent qui doit lire un secret a besoin d'un rôle de plus, à
+accorder au cas par cas plutôt qu'à l'avance.
+
+**Révoquer, à la fin :**
+
+```bash
+gcloud iam service-accounts keys list --iam-account=$SA --project=$PROJECT
+gcloud iam service-accounts keys delete <KEY_ID> --iam-account=$SA --project=$PROJECT
+# ou, plus radical et plus sûr :
+gcloud iam service-accounts delete $SA --project=$PROJECT
+```
+
+Mieux encore, le jour où l'appelant peut porter un jeton OIDC : **Workload
+Identity Federation**, qui supprime le fichier de clé plutôt que de le faire
+tourner. C'est déjà noté en §1 pour GitHub Actions ; c'est la même réponse ici.
+
+### 3 ter. Filmer une démonstration reproductible
+
+Le produit ne se montre de bout en bout que si une agence répond, et une agence
+répond quand elle veut. `npm run db:demo` pose une annonce dont « l'agence » est
+une boîte que vous relevez vous-même : vous jouez les deux rôles, et la
+séquence est rejouable autant de fois qu'il faut.
+
+```bash
+npm run db:demo -- --account project.orionloop@gmail.com \
+                   --agency  jenie.du.film@gmail.com
+npm run db:demo -- --remove
+```
+
+**L'agent n'est au courant de rien, et c'est tout l'intérêt.** Même table, même
+filtre dur, même score, même chemin d'envoi : ce qu'on filme est le comportement
+réel. L'annonce est *dérivée de la recherche active du compte* — ville, type,
+pièces, zone, budget — donc elle passe le filtre par construction et non par
+chance.
+
+Relancez juste avant de filmer : la fraîcheur pèse 27 % du score avec une
+demi-vie de 90 minutes, et l'outil repose `published_at` à maintenant.
+
+Le déroulé, une fois la boîte du compte connectée :
+
+| Quand | Ce qui se passe |
+|---|---|
+| ≤ 1 min | `prems-match` voit l'annonce et crée le match |
+| ≤ 2 min | `prems-apply` envoie la candidature à l'adresse « agence », depuis la boîte du compte |
+| vous | Répondez depuis cette boîte — proposez deux créneaux, ou réclamez une pièce |
+| ≤ 8 h, ou à la main | `prems-inbox` lit, classe, consulte l'agenda, répond |
+
+Pour ne pas attendre le tick de huit heures pendant le tournage :
+
+```bash
+gcloud run jobs execute prems-inbox --region europe-west9 \
+  --project gen-lang-client-0781599139 --wait
+```
+
+Rien ne distingue cette annonce du catalogue réel pour le pipeline. Pour un
+humain, si : sa source est `demo-agency` et son identifiant externe commence par
+`demo-`. C'est ce qui permet `--remove`, et ce qui évite de la confondre avec de
+vraies données dans une requête d'exploitation.
+
 ### 4. Le modèle et sa région — à revérifier avant tout déploiement
 
 Les modèles sont nommés une seule fois, dans `workers/src/agent.ts`. Aucun autre
 fichier ne contient d'identifiant de modèle.
 
-| | Modèle | Région |
-|---|---|---|
-| Agents | `gemini-3.5-flash` | `eu` (multi-région européenne) |
-| Embeddings | `text-multilingual-embedding-002` | `europe-west9` |
+| | Modèle | Région | Résidence des données |
+|---|---|---|---|
+| Agents | `gemini-3.7-flash` | `global` | **aucune** — traitement mondial |
+| Embeddings | `text-multilingual-embedding-002` | `europe-west9` | UE, Paris |
+| *Repli UE* | `gemini-3.5-flash` | `europe-west3` | UE, Francfort |
+| *Repli Paris* | `gemini-2.5-flash` | `europe-west9` | UE, avec les jobs |
 
-**Deux choses sont vérifiées, une troisième ne l'est pas.**
+#### Mesuré, plus supposé
 
-Vérifié : `text-multilingual-embedding-002` répond en 768 dimensions depuis
-`europe-west9` — c'est la dimension figée dans `listing_embeddings`, et le
-corpus est français, là où `text-embedding-004` est entraîné majoritairement sur
-de l'anglais.
+Relevé le 27 août 2026 en appelant chaque endpoint, `npm run gcp:models` :
 
-Vérifié aussi, et c'est l'erreur qui a coûté le plus de temps : **« Gemini 3.5
-Flash-Lite » n'existe pas.** La famille Flash-Lite s'arrête à
-`gemini-2.5-flash-lite`, et `gemini-3-flash-lite` répond 404. La conclusion
-qu'on en avait tirée — « la famille 3.x n'existe pas » — était fausse :
-`gemini-3.5-flash`, sans le Lite, est le modèle courant. Un 404 sur une variante
-ne dit rien de la famille.
+| | west9 | west4 | west3 | west1 | north1 | southwest1 | global |
+|---|---|---|---|---|---|---|---|
+| `gemini-3.7-flash` | 404 | 404 | 404 | 404 | 404 | 404 | **200** |
+| `gemini-3.6-flash` | 404 | 404 | 404 | 404 | 404 | 404 | — |
+| `gemini-3.5-flash` | 404 | 404 | **200** | 404 | 404 | 404 | **200** |
+| `gemini-3-flash` | 404 | 404 | 404 | 404 | 404 | 404 | — |
+| `gemini-2.5-flash` | **200** | **200** | **200** | **200** | **200** | **200** | — |
 
-**Non vérifié depuis cette machine : la région.** `gemini-3.5-flash` est
-documenté comme servi depuis `eu`, la multi-région européenne, et n'est pas
-documenté comme disponible depuis `europe-west9` — même situation que les
-processeurs Document AI, et pour la même raison. `eu` garde la requête dans
-l'Union européenne, ce qui est la contrainte réellement applicable ; `global` ne
-la garderait pas. Mais c'est une lecture de la documentation, pas un appel.
-**Avant de déployer, faites l'appel :**
+Trois conclusions, toutes contraires à ce que ce dépôt affirmait :
+
+1. **`eu` n'existe pas pour Vertex AI.** `eu-aiplatform.googleapis.com` répond
+   400 « Invalid hostname ». La multi-région européenne existe pour Document AI
+   — c'est de là que l'idée venait — et pas pour Vertex. Le repli documenté
+   pendant deux commits aurait échoué au premier appel.
+2. **La famille 3.x est mondiale, à une exception près** : `gemini-3.5-flash`
+   répond depuis `europe-west3` (Francfort). C'est le modèle le plus récent
+   qu'on puisse servir depuis l'Union européenne.
+3. **`europe-west9` ne sert aucun modèle 3.x.** Paris s'arrête à 2.5.
 
 ```bash
-PROJECT=gen-lang-client-0781599139
-TOKEN=$(gcloud auth print-access-token)
+npm run gcp:models              # sonde chaque paire modèle × région
+npm run gcp:models -- --strict  # sort en 1 si la paire configurée ne répond pas
+npm run gcp:models -- --dry-run # affiche les endpoints, n'appelle rien
+```
 
-for LOC in eu europe-west9; do
-  echo -n "$LOC : "
-  curl -s -o /dev/null -w '%{http_code}\n' \
-    -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-    "https://${LOC}-aiplatform.googleapis.com/v1/projects/$PROJECT/locations/${LOC}/publishers/google/models/gemini-3.5-flash:generateContent" \
-    -d '{"contents":[{"role":"user","parts":[{"text":"ping"}]}]}'
+Prérequis : ADC (`gcloud auth application-default login`, `GOOGLE_APPLICATION_CREDENTIALS`
+ou `GCP_SERVICE_ACCOUNT_JSON`) et l'API Vertex activée.
+
+#### L'erreur qui a coûté le plus de temps
+
+« Gemini 3.5 Flash-Lite n'existe pas » était **vrai de la variante et faux de la
+famille** : `gemini-3-flash-lite` répond bien 404, mais `gemini-3.5-flash`
+existe. Les workers sont restés deux générations en arrière sur cette
+déduction. Un 404 sur une variante ne dit rien de la famille — et c'est
+exactement pourquoi `gcp:models` existe et pourquoi il faut le lancer plutôt
+que de lire une page de documentation.
+
+#### La décision de résidence, en clair
+
+Le produit tourne sur `gemini-3.7-flash`, donc sur l'endpoint global. Ce qui
+sort de l'UE n'est pas abstrait : ces prompts portent le nom d'une personne, sa
+situation professionnelle, son revenu net mensuel, ses disponibilités, et le
+texte de sa correspondance privée avec une agence.
+
+C'est un arbitrage, pas un oubli. Il est loggé à chaque run qui parle à un
+modèle :
+
+```
+modèle: gemini-3.7-flash @ global — AUCUNE résidence des données — traitement mondial
+```
+
+Revenir en arrière ne demande aucun code, seulement deux variables sur les deux
+jobs concernés (`prems-enrich` ne fait que des embeddings, restés à Paris) :
+
+```bash
+for J in prems-apply prems-inbox; do
+  gcloud run jobs update $J --region europe-west9 \
+    --update-env-vars GCP_MODEL=gemini-3.5-flash,GCP_MODEL_LOCATION=europe-west3
 done
 ```
 
-200 sur `eu` : rien à faire, c'est le défaut. 200 sur `europe-west9` aussi :
-posez `GCP_MODEL_LOCATION=europe-west9` sur les jobs et tout revient à Paris.
-404 sur les deux : le modèle a encore changé de nom, et c'est `agent.ts` — un
-seul fichier — qu'il faut corriger.
+**À décider avant de prendre un client payant**, et à écrire dans la politique
+de confidentialité si le global est conservé : un service qui traite des
+bulletins de paie français doit pouvoir dire où ils sont traités.
 
 ---
 

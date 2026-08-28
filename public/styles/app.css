@@ -2226,3 +2226,258 @@ body.pm-body {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
+
+/* ===========================================================================
+   Onglet Agent — ce qu'il attend, puis ce qu'il a fait.
+   =========================================================================== */
+
+.pm-agent__intro { margin-bottom: 20px; }
+
+.pm-agent__title {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--color-ink);
+  margin: 0 0 6px;
+}
+
+.pm-agent__sub {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-gray-500);
+  margin: 0;
+  max-width: 46ch;
+}
+
+/* --- Ce qu'il attend de toi ------------------------------------------- */
+
+.pm-asks { margin-bottom: 28px; }
+
+/*
+ * Une demande ouverte est la seule chose de cette page qui bloque quelque
+ * chose. Le liseré accentué à gauche le dit avant qu'on ait lu le texte.
+ */
+.pm-ask {
+  position: relative;
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-accent);
+  border-radius: var(--pm-radius);
+  background: var(--color-surface);
+  padding: 16px 18px;
+  margin-bottom: 10px;
+  transition: opacity 160ms ease;
+}
+
+.pm-ask.is-busy { opacity: 0.55; pointer-events: none; }
+
+.pm-ask--done {
+  border-left-color: color-mix(in srgb, var(--pm-green) 45%, transparent);
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 18px;
+  opacity: 0.72;
+}
+
+.pm-ask__check {
+  color: var(--pm-green);
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.pm-ask__head { display: flex; gap: 12px; align-items: flex-start; }
+
+.pm-ask__icon {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  color: var(--color-accent);
+}
+
+.pm-ask__body { min-width: 0; }
+
+.pm-ask__label {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-ink);
+  margin: 0 0 3px;
+  line-height: 1.35;
+}
+
+.pm-ask__reason {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--color-gray-500);
+  margin: 0 0 4px;
+}
+
+.pm-ask__meta {
+  font-size: 12px;
+  color: var(--color-gray-500);
+  margin: 0;
+}
+
+.pm-ask__actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 14px 0 0;
+  padding-left: 46px;
+}
+
+.pm-ask__input { flex: 1 1 auto; min-width: 0; }
+
+/* L'input file reste dans le flux pour le lecteur d'écran, invisible à l'œil. */
+.pm-ask__file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.pm-ask__cta {
+  cursor: pointer;
+  flex: 0 0 auto;
+  align-self: flex-start;
+}
+
+/* Les boutons de l'onboarding sont pleine largeur par défaut ; ici ils vivent
+   dans une ligne d'actions et doivent se contenter de leur contenu. */
+.pm-ask__actions > .ob-btn { flex: 0 0 auto; width: auto; min-width: 0; }
+
+.pm-ask__skip {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 8px 0 0 46px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--color-gray-500);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.pm-ask__skip:hover { color: var(--color-ink); }
+
+.pm-asks__clear {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 14px 16px;
+  border-radius: var(--pm-radius);
+  background: color-mix(in srgb, var(--pm-green) 8%, transparent);
+  color: var(--color-ink);
+  font-size: 14px;
+}
+
+.pm-asks__clear p { margin: 0; }
+.pm-asks__clear-icon { color: var(--pm-green); display: grid; place-items: center; }
+.pm-asks__past { margin-top: 12px; }
+
+/* --- Le journal -------------------------------------------------------- */
+
+/*
+ * Une frise verticale plutôt qu'une liste de cartes : ce qui compte ici est
+ * l'ordre et la continuité — l'agent n'a pas fait douze choses isolées, il a
+ * suivi un fil.
+ */
+.pm-log {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 22px;
+  position: relative;
+}
+
+.pm-log::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
+  background: var(--color-border);
+}
+
+.pm-log__item {
+  position: relative;
+  padding: 0 0 20px;
+}
+
+.pm-log__dot {
+  position: absolute;
+  left: -21px;
+  top: 6px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--color-surface);
+  border: 2px solid var(--color-gray-500);
+}
+
+/* Une action engage la personne ; une pensée non. La couleur porte ça seule. */
+.pm-log__item--action .pm-log__dot { border-color: var(--color-accent); background: var(--color-accent); }
+.pm-log__item--problem .pm-log__dot { border-color: var(--pm-red); background: var(--pm-red); }
+.pm-log__item--thought .pm-log__dot { border-color: var(--color-gray-500); }
+
+.pm-log__title {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--color-ink);
+  margin: 0 0 2px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.pm-log__time { font-size: 12px; font-weight: 400; color: var(--color-gray-500); }
+
+.pm-log__detail {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--color-gray-500);
+  margin: 0 0 6px;
+}
+
+/* Les outils appelés : ce qui rend la décision vérifiable plutôt que crue. */
+.pm-log__tools {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 0;
+  padding: 0;
+}
+
+.pm-log__tool {
+  font-size: 12px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-ink) 6%, transparent);
+  color: var(--color-gray-500);
+}
+
+.pm-log__badge {
+  display: inline-block;
+  margin: 8px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  color: var(--pm-blue);
+  background: color-mix(in srgb, var(--pm-blue) 10%, transparent);
+}
+
+.pm-log__empty { padding: 8px 0; }
+
+@media (max-width: 560px) {
+  .pm-ask__actions { padding-left: 0; flex-wrap: wrap; }
+  .pm-ask__skip { padding-left: 0; }
+}

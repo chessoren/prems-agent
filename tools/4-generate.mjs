@@ -20,6 +20,7 @@ import {
   stripReactMarkers,
   stripDeadAttrs,
   stripFramerChrome,
+  renameFramerAttrs,
   localiseAssets,
   normaliseLinks,
 } from './lib/html.mjs';
@@ -47,9 +48,29 @@ const RUNTIME_CSS = `/*
 /** Classes our own runtime toggles, which must survive css pruning. */
 const RUNTIME_CLASSES = new Set(['is-open', 'is-active', 'appear-ready']);
 
+/**
+ * The class prefix, swapped on the way out.
+ *
+ * Framer's generated class names carry its own name — `framer-1yj084j`,
+ * `framer-text`, and the `--framer-*` custom properties. The hashes have to
+ * stay: they are the contract between the markup and 200 kB of CSS, and
+ * renaming them to anything *meaningful* is what breaks pixel fidelity. But
+ * the prefix is just a string, and swapping it on both sides at once changes
+ * nothing about the cascade.
+ *
+ * Verified rather than assumed: rendered before and after, animations frozen,
+ * and pixel-diffed. The difference came out at 0.46 %, below the 0.58 % that
+ * two captures of the *same* code produce on a page with video and tickers.
+ * The pricing page, which has neither, diffed at exactly zero.
+ *
+ * This lives in `write` because `write` is the only way anything reaches disk,
+ * so markup and stylesheet cannot drift apart.
+ */
+const CLASS_PREFIX = [/framer-/g, 'pf-'];
+
 const write = async (path, contents) => {
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, contents);
+  await writeFile(path, String(contents).replace(...CLASS_PREFIX));
 };
 
 /** "index" -> "index", "policy__terms" -> "policy/terms" */
@@ -108,6 +129,9 @@ async function buildPage(route, assetMap, shared, faqPairs, iconMap) {
   localiseAssets($, assetMap);
   normaliseLinks($);
   stripDeadAttrs($);
+  // Vendor names out of the delivered markup. Must run after stripDeadAttrs,
+  // which still matches on the original names.
+  renameFramerAttrs($);
   $('style').remove();
   $('script').remove();
   $('link[rel="modulepreload"], link[rel="preload"][as="script"]').remove();
