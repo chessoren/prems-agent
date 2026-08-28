@@ -215,7 +215,10 @@ interesting part.
   our own Framer site, `prems.framer.ai`, by the pipeline described in
   [`docs/FRAMER-CLONE.md`](docs/FRAMER-CLONE.md). The design is ours; the
   generated markup, the vendored fonts and the images under `public/assets/`
-  come from that export and are not hand-written. Everything under `workers/`,
+  come from that export and are not hand-written. The generator rewrites the
+  vendor's class prefix and attribute names on the way out — verified by pixel
+  diff, not assumed — so the delivered markup reads as this project's own, but
+  the provenance is stated here rather than hidden. Everything under `workers/`,
   `packages/`, `services/`, `supabase/` and `tools/` is written for this project.
 - **Third-party services** are used under their own terms: Supabase, Vercel,
   Composio, Stripe, and Google Cloud.

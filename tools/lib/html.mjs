@@ -19,6 +19,40 @@ const DEAD_ATTRS = [
   'data-reactroot',
 ];
 
+/**
+ * The attributes that survive, renamed to say what they do.
+ *
+ * Two of them are load-bearing — `data-framer-name` is how the mobile nav and
+ * the FAQ accordion find their elements, `data-framer-appear-id` is how the
+ * appear animations find theirs — so they cannot simply be dropped. Renaming
+ * costs nothing: the value is unchanged, the selectors move with it, and the
+ * delivered DOM stops carrying 2 300 copies of a vendor name for markup that
+ * is the site's own design.
+ *
+ * The tools that *read* Framer's own HTML keep the original names, because
+ * that is the input we do not control. This applies only on the way out.
+ */
+const RENAMED_ATTRS = {
+  'data-framer-name': 'data-name',
+  'data-framer-appear-id': 'data-appear',
+  'data-framer-background-image-wrapper': 'data-bg-image',
+  'data-framer-root': 'data-root',
+  'data-framer-layout-hint-center-x': 'data-center-x',
+};
+
+/** Rename them in place, preserving order-insensitive attribute semantics. */
+export function renameFramerAttrs($, scope) {
+  for (const [from, to] of Object.entries(RENAMED_ATTRS)) {
+    $(`[${from}]`, scope).each((_, el) => {
+      const $el = $(el);
+      const value = $el.attr(from);
+      $el.removeAttr(from);
+      $el.attr(to, value);
+    });
+  }
+  return $;
+}
+
 /** React streaming/suspense comment markers left in the SSR output. */
 export function stripReactMarkers(html) {
   return html.replace(/<!--\/?\$[!?]?-->/g, '');

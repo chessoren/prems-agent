@@ -15,15 +15,15 @@
 
 /** Toggle the mobile nav. Framer renders both the closed and "Open" variants. */
 function initMobileNav() {
-  const drawers = document.querySelectorAll('[data-framer-name="Open"]');
-  const triggers = document.querySelectorAll('[data-framer-name="Icon Container"]');
+  const drawers = document.querySelectorAll('[data-name="Open"]');
+  const triggers = document.querySelectorAll('[data-name="Icon Container"]');
   if (!triggers.length || !drawers.length) return;
 
   // Pair each trigger with the drawer inside the same nav element.
   for (const trigger of triggers) {
     const nav = trigger.closest('nav');
     if (!nav) continue;
-    const drawer = nav.querySelector('[data-framer-name="Open"]');
+    const drawer = nav.querySelector('[data-name="Open"]');
     if (!drawer) continue;
 
     drawer.hidden = true;
@@ -143,18 +143,18 @@ function initTickers() {
 /**
  * FAQ accordion.
  *
- * The build annotates each item with both Framer variants - the `framer-v-*`
+ * The build annotates each item with both variants - the `pf-v-*`
  * class and the container's inline style - and gives collapsed items the answer
  * Framer had omitted. Toggling is then just swapping between the two variants,
  * so an open item looks exactly like one Framer rendered open.
  */
 function initFaq() {
   for (const item of document.querySelectorAll('[data-faq-item]')) {
-    const question = item.querySelector('[data-framer-name="Question"]');
+    const question = item.querySelector('[data-name="Question"]');
     const answer = item.querySelector('[data-faq-answer]');
     if (!question || !answer) continue;
 
-    const container = item.querySelector('[data-framer-name="Container"]');
+    const container = item.querySelector('[data-name="Container"]');
     const { faqOpenClass, faqClosedClass, faqOpenStyle, faqClosedStyle } = item.dataset;
 
     question.setAttribute('role', 'button');
@@ -167,7 +167,7 @@ function initFaq() {
         item.classList.toggle(faqOpenClass, open);
         item.classList.toggle(faqClosedClass, !open);
       }
-      item.setAttribute('data-framer-name', open ? 'Open' : 'Closed');
+      item.setAttribute('data-name', open ? 'Open' : 'Closed');
       if (container && faqOpenStyle && faqClosedStyle) {
         container.setAttribute('style', open ? faqOpenStyle : faqClosedStyle);
       }
