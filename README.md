@@ -172,8 +172,25 @@ npm run db:migrate          # migrations in supabase/migrations — 0017 adds th
                             # agent_requests table and the agent_activity view
                             # the Agent tab reads
 npm run db:seed             # 1 100 demo listings across 11 cities
-npm run db:inspect          # what is actually in there
 ```
+
+**A reproducible end-to-end demo.** The product can only be filmed end to end if
+an agency replies, and an agency replies when it likes. This seeds one listing
+addressed to a mailbox you control, so you can play both roles:
+
+```bash
+npm run db:demo -- --account you@example.com --agency your-other@example.com
+npm run db:demo -- --remove
+```
+
+The agent is told nothing. Same table, same hard filter, same score, same send
+path — what you observe is the real behaviour, not a staging. The listing is
+*derived from the account's own active search*, so it passes the filter by
+construction rather than by luck, and `published_at` is set to now because
+freshness is 27% of the score: re-run it just before recording.
+
+Only a human can tell it apart: its source is `demo-agency` and its external id
+starts with `demo-`, which is what makes `--remove` a single gesture.
 
 **The workers**, against your own Google Cloud project. They need
 `GCP_PROJECT_ID`, credentials (`gcloud auth application-default login`, or

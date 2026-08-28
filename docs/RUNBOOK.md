@@ -206,6 +206,49 @@ Mieux encore, le jour où l'appelant peut porter un jeton OIDC : **Workload
 Identity Federation**, qui supprime le fichier de clé plutôt que de le faire
 tourner. C'est déjà noté en §1 pour GitHub Actions ; c'est la même réponse ici.
 
+### 3 ter. Filmer une démonstration reproductible
+
+Le produit ne se montre de bout en bout que si une agence répond, et une agence
+répond quand elle veut. `npm run db:demo` pose une annonce dont « l'agence » est
+une boîte que vous relevez vous-même : vous jouez les deux rôles, et la
+séquence est rejouable autant de fois qu'il faut.
+
+```bash
+npm run db:demo -- --account project.orionloop@gmail.com \
+                   --agency  jenie.du.film@gmail.com
+npm run db:demo -- --remove
+```
+
+**L'agent n'est au courant de rien, et c'est tout l'intérêt.** Même table, même
+filtre dur, même score, même chemin d'envoi : ce qu'on filme est le comportement
+réel. L'annonce est *dérivée de la recherche active du compte* — ville, type,
+pièces, zone, budget — donc elle passe le filtre par construction et non par
+chance.
+
+Relancez juste avant de filmer : la fraîcheur pèse 27 % du score avec une
+demi-vie de 90 minutes, et l'outil repose `published_at` à maintenant.
+
+Le déroulé, une fois la boîte du compte connectée :
+
+| Quand | Ce qui se passe |
+|---|---|
+| ≤ 1 min | `prems-match` voit l'annonce et crée le match |
+| ≤ 2 min | `prems-apply` envoie la candidature à l'adresse « agence », depuis la boîte du compte |
+| vous | Répondez depuis cette boîte — proposez deux créneaux, ou réclamez une pièce |
+| ≤ 8 h, ou à la main | `prems-inbox` lit, classe, consulte l'agenda, répond |
+
+Pour ne pas attendre le tick de huit heures pendant le tournage :
+
+```bash
+gcloud run jobs execute prems-inbox --region europe-west9 \
+  --project gen-lang-client-0781599139 --wait
+```
+
+Rien ne distingue cette annonce du catalogue réel pour le pipeline. Pour un
+humain, si : sa source est `demo-agency` et son identifiant externe commence par
+`demo-`. C'est ce qui permet `--remove`, et ce qui évite de la confondre avec de
+vraies données dans une requête d'exploitation.
+
 ### 4. Le modèle et sa région — à revérifier avant tout déploiement
 
 Les modèles sont nommés une seule fois, dans `workers/src/agent.ts`. Aucun autre

@@ -26,7 +26,8 @@
     "db:migrate": "NODE_USE_ENV_PROXY=1 node tools/supabase/migrate.mjs",
     "db:inspect": "NODE_USE_ENV_PROXY=1 node tools/supabase/inspect.mjs",
     "gcp:models": "NODE_USE_ENV_PROXY=1 node tools/gcp-models.mjs",
-    "preflight": "NODE_USE_ENV_PROXY=1 node tools/preflight.mjs"
+    "preflight": "NODE_USE_ENV_PROXY=1 node tools/preflight.mjs",
+    "db:demo": "NODE_USE_ENV_PROXY=1 node tools/supabase/seed-demo-agency.mjs"
   },
   "repository": {
     "type": "git",
