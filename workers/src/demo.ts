@@ -28,8 +28,14 @@ import { watchAllInboxes } from './inbox.js';
 /** La source des annonces de démonstration. Reconnaissable, et supprimable. */
 const SOURCE_SLUG = 'demo-agency';
 
-/** Où atterrissent les candidatures de démonstration. */
-const AGENCY_EMAIL = process.env.DEMO_AGENCY_EMAIL ?? 'oren92300@gmail.com';
+/**
+ * Où atterrissent les candidatures de démonstration.
+ *
+ * C'est la boîte du « propriétaire » de l'annonce fabriquée, celle où quelqu'un
+ * répond en direct pendant la démonstration. Elle doit être différente du
+ * compte connecté, sinon l'agent lit ses propres messages.
+ */
+const AGENCY_EMAIL = process.env.DEMO_AGENCY_EMAIL ?? 'jenie.du.film@gmail.com';
 
 /** Un tour toutes les huit secondes : au-dessous, on paie des appels pour rien. */
 const TICK_MS = Number(process.env.DEMO_TICK_MS ?? 8000);
@@ -171,6 +177,52 @@ async function ensureListings(sourceId: string): Promise<number> {
   return posed;
 }
 
+/**
+ * Pourquoi rien n'est parti.
+ *
+ * `queueApplications` écrit la raison dans `matches.skipped_reason` et rend
+ * simplement zéro. En production c'est le bon choix — la raison est consultable
+ * quand on la cherche. Pendant une démonstration, zéro sans explication est la
+ * pire sortie possible : on regarde un écran vide sans savoir si le système est
+ * cassé ou s'il applique une règle.
+ *
+ * Les trois plafonds de `may_send` sont les suspects habituels, et deux d'entre
+ * eux se déclenchent précisément parce qu'on a répété la démonstration :
+ * `agency_cooldown` compte deux candidatures vers la même adresse sur sept
+ * jours, et `too_many_active` compte les candidatures encore ouvertes.
+ */
+async function explainSilence(): Promise<string> {
+  const client = db();
+  const { data: ready } = await client.rpc('matches_ready_to_send_demo', { want: 5 });
+  const rows = (ready ?? []) as Array<Record<string, any>>;
+
+  if (rows.length === 0) {
+    // Distinguer « plus rien à faire » de « quelque chose bloque ». Compter tous
+    // les matchs du système répondait à la mauvaise question : il en reste des
+    // milliers en permanence, et le message donnait l'alarme à chaque tour d'une
+    // démonstration qui se déroulait bien.
+    const { count } = await client
+      .from('matches')
+      .select('id, listings!inner(external_id)', { count: 'exact', head: true })
+      .eq('status', 'new')
+      .like('listings.external_id', 'demo-%');
+    return (count ?? 0) === 0
+      ? 'rien en attente : la candidature de démonstration est déjà partie'
+      : `${count} match(s) de démonstration retenus (boîte non connectée, ou candidature déjà existante)`;
+  }
+
+  const verdicts: string[] = [];
+  for (const row of rows.slice(0, 3)) {
+    const { data: gate } = await client.rpc('may_send', {
+      p_user_id: row.user_id,
+      p_agency_email: row.agency_email,
+    });
+    const verdict = Array.isArray(gate) ? gate[0] : gate;
+    verdicts.push(verdict?.allowed ? 'autorisé' : (verdict?.reason ?? 'refusé sans raison'));
+  }
+  return `${rows.length} prêt(s), verdicts : ${verdicts.join(', ')}`;
+}
+
 /** Un tour complet : poser, matcher, candidater, relever, répondre. */
 async function cycle(project: string): Promise<string> {
   const started = Date.now();
@@ -178,7 +230,14 @@ async function cycle(project: string): Promise<string> {
   const posed = sourceId ? await ensureListings(sourceId) : 0;
 
   const matched = await matchPending(Number(process.env.MATCH_LIMIT ?? 50));
-  const queued = await queueApplications(Number(process.env.QUEUE_LIMIT ?? 20));
+  // La seule différence avec la production, et elle est de portée, pas de
+  // comportement : on ne candidate que sur la source fabriquée. Ouvrir la vanne
+  // globale enverrait des messages vers de vraies agences pendant une
+  // répétition.
+  const queued = await queueApplications(
+    Number(process.env.QUEUE_LIMIT ?? 20),
+    'matches_ready_to_send_demo',
+  );
   const sent = await sendDue(project, Number(process.env.SEND_LIMIT ?? 20));
   const outbox = await sendOutbox(Number(process.env.OUTBOX_LIMIT ?? 20));
   await closeLostMatches();
@@ -187,10 +246,15 @@ async function cycle(project: string): Promise<string> {
   // huit heures — et c'est elle qui doit répondre en quelques secondes ici.
   const inbox = await watchAllInboxes(project);
 
+  // Zéro candidature : dire pourquoi à chaque tour, pas seulement au tour qui a
+  // créé le match. Un match posé au premier tour et bloqué au second serait
+  // resté sans explication, ce qui est exactement le cas qu'on cherche à voir.
+  const why = queued === 0 ? ` · ${await explainSilence()}` : '';
+
   return (
     `posées ${posed} · matchs ${matched.matches} · en file ${queued} · ` +
     `envoyées ${sent.sent} · relances ${outbox.sent} · ` +
-    `boîtes ${inbox.clients} · réponses ${inbox.replies} · ${Date.now() - started} ms`
+    `boîtes ${inbox.clients} · réponses ${inbox.replies} · ${Date.now() - started} ms${why}`
   );
 }
 
@@ -205,6 +269,18 @@ export async function runDemoLoop(project: string): Promise<void> {
   const minutes = Number(process.env.DEMO_MINUTES ?? 10);
   const deadline = Date.now() + minutes * 60_000;
   let round = 0;
+
+  // Repartir de zéro, sinon la troisième répétition ne montre rien.
+  //
+  // Deux des trois plafonds de `may_send` comptent des candidatures passées :
+  // deux messages vers la même adresse en sept jours, cinq candidatures
+  // ouvertes. Une démonstration répétée les atteint, et l'agent se tait — à
+  // raison, mais devant le public. `demo_reset` (0018) efface la source
+  // fabriquée et rien d'autre ; les annonces sont reposées au premier tour.
+  if (process.env.DEMO_RESET !== '0') {
+    const { data } = await db().rpc('demo_reset');
+    console.log(`démo: remise à zéro, ${data ?? 0} annonce(s) de démonstration effacée(s)`);
+  }
 
   console.log(`démo: boucle de ${minutes} min, un tour toutes les ${TICK_MS / 1000} s`);
 

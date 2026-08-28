@@ -26,7 +26,8 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers: { 'x-api-key': apiKey(), 'Content-Type': 'application/json', ...(init.headers ?? {}) },
   });
   const text = await response.text();
-  if (!response.ok) throw new Error(`composio ${path}: HTTP ${response.status} ${text.slice(0, 300)}`);
+  if (!response.ok)
+    throw new Error(`composio ${path}: HTTP ${response.status} ${text.slice(0, 300)}`);
   return (text ? JSON.parse(text) : {}) as T;
 }
 
@@ -97,7 +98,7 @@ export async function canExecute(): Promise<{ ok: boolean; reason: string | null
         ok: false,
         reason:
           'la clé Composio est en lecture seule : il lui manque le droit "tool_execution". ' +
-          'Aucun e-mail ne peut être envoyé ni lu tant qu\'elle n\'est pas élargie.',
+          "Aucun e-mail ne peut être envoyé ni lu tant qu'elle n'est pas élargie.",
       };
     }
     return { ok: true, reason: null };
@@ -130,6 +131,39 @@ export async function sendEmail(
   const body = args.attachmentUrl
     ? `${args.body}\n\nMon dossier de location (DossierFacile, vérifié) :\n${args.attachmentUrl}`
     : args.body;
+
+  // Répondre et écrire ne sont pas la même action.
+  //
+  // `GMAIL_SEND_EMAIL` accepte bien un `thread_id`, mais Gmail ne raccroche un
+  // message à un fil que s'il porte aussi les en-têtes `In-Reply-To` et
+  // `References` : sans eux, le fil demandé est ignoré et un nouveau s'ouvre.
+  // Mesuré le 28 août — la réponse de l'agent est repartie sur un identifiant de
+  // fil inédit, donc dans une conversation séparée côté agence. Pour un agent
+  // dont tout l'intérêt est de tenir une négociation, c'est un défaut visible :
+  // l'agence reçoit quatre courriels sans lien au lieu d'un échange.
+  //
+  // L'action dédiée pose ces en-têtes. Comme pour l'agenda, le nom est essayé
+  // plutôt que supposé, et l'envoi simple reste le repli : une réponse mal
+  // raccrochée vaut infiniment mieux qu'une réponse jamais partie.
+  if (args.threadId) {
+    try {
+      const replied = await execute(
+        'GMAIL_REPLY_TO_THREAD',
+        connectedAccountId,
+        {
+          thread_id: args.threadId,
+          recipient_email: args.to,
+          message_body: body,
+          ...(args.bcc ? { bcc: [args.bcc] } : {}),
+          is_html: false,
+        },
+        userId,
+      );
+      if (replied.successful !== false) return replied;
+    } catch {
+      /* action absente ou refusée : on retombe sur l'envoi simple */
+    }
+  }
 
   return execute(
     'GMAIL_SEND_EMAIL',

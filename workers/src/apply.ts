@@ -40,10 +40,19 @@ function nextAttemptAt(attempts: number): string {
  *
  * Queuing and sending are separate passes on purpose: a row exists, visible and
  * inspectable, before anything leaves the building.
+ *
+ * `source` names the function that decides which matches qualify, and that is
+ * the only thing the demonstration changes. `matches_ready_to_send_demo` (0018)
+ * has the same signature and the same guards, restricted to the fabricated
+ * source - so the code below, the rate limits, the writing and the sending are
+ * shared to the line between a demonstration and a Tuesday afternoon.
  */
-export async function queueApplications(limit = 50): Promise<number> {
+export async function queueApplications(
+  limit = 50,
+  source: 'matches_ready_to_send' | 'matches_ready_to_send_demo' = 'matches_ready_to_send',
+): Promise<number> {
   const client = db();
-  const { data } = await client.rpc('matches_ready_to_send', { want: limit });
+  const { data } = await client.rpc(source, { want: limit });
   const ready = (data ?? []) as Ready[];
   let queued = 0;
 
@@ -212,7 +221,10 @@ export async function closeLostMatches(): Promise<number> {
  * nothing to fix by trying again, so it is dead-lettered immediately with a
  * reason a human can act on.
  */
-export async function sendDue(project: string, limit = 20): Promise<{ sent: number; failed: number }> {
+export async function sendDue(
+  project: string,
+  limit = 20,
+): Promise<{ sent: number; failed: number }> {
   const client = db();
 
   // Fail loudly, before touching a single application. A read-only Composio key
@@ -221,8 +233,12 @@ export async function sendDue(project: string, limit = 20): Promise<{ sent: numb
   const preflight = await canExecute();
   if (!preflight.ok) {
     await logEvent({ type: 'composio.misconfigured', payload: { reason: preflight.reason } });
-    throw new Error(preflight.reason ?? 'Composio ne peut pas exécuter d\'outil');
+    throw new Error(preflight.reason ?? "Composio ne peut pas exécuter d'outil");
   }
+  // Les réservations qu'un conteneur tué aurait laissées en plan. Rendues à la
+  // file avant de la lire, sinon elles y resteraient invisibles.
+  await client.rpc('release_stale_sends');
+
   const now = new Date().toISOString();
 
   const { data: due } = await client
@@ -238,9 +254,33 @@ export async function sendDue(project: string, limit = 20): Promise<{ sent: numb
   let failed = 0;
 
   for (const app of due ?? []) {
+    // Réserver la ligne avant de la travailler.
+    //
+    // Lire la file puis envoyer n'est pas atomique, et il y a régulièrement deux
+    // processus dans cette boucle : le tick `prems-apply` toutes les deux
+    // minutes, et la boucle de démonstration. Mesuré le 28 août : la même
+    // candidature partie deux fois vers la même agence à une seconde
+    // d'intervalle, sur deux fils Gmail distincts — exactement ce que tout ce
+    // module s'emploie à rendre impossible.
+    //
+    // L'UPDATE conditionnel tranche : PostgreSQL sérialise les deux écritures,
+    // le premier obtient la ligne, le second ne voit plus le statut qu'il
+    // exigeait et repart avec zéro ligne. Pas de verrou applicatif, pas de bail
+    // à renouveler. `release_stale_sends` (0019) rend à la file celles qu'un
+    // conteneur tué aurait laissées réservées.
+    const { data: claimed } = await client
+      .from('applications')
+      .update({ status: 'sending', sending_since: new Date().toISOString() })
+      .eq('id', app.id as string)
+      .in('status', ['pending', 'failed'])
+      .select('id');
+    if (!claimed?.length) continue;
+
     const { data: profile } = await client
       .from('profiles')
-      .select('first_name, last_name, employment_status, monthly_income_cents, needs_guarantor, dossierfacile_url, gmail_account_id')
+      .select(
+        'first_name, last_name, employment_status, monthly_income_cents, needs_guarantor, dossierfacile_url, gmail_account_id',
+      )
       .eq('id', app.user_id as string)
       .maybeSingle();
 
@@ -316,7 +356,7 @@ export async function sendDue(project: string, limit = 20): Promise<{ sent: numb
       // The first message of the thread, in the conversation the Messages tab
       // reads. Written here rather than inferred later: the interface must be
       // able to show what was actually sent, not a reconstruction of it.
-      const responseData = ((result.data ?? {}) as Record<string, any>);
+      const responseData = (result.data ?? {}) as Record<string, any>;
       const gmail = (responseData.response_data ?? responseData) as Record<string, any>;
       await client.from('messages').insert({
         user_id: app.user_id as string,
@@ -347,7 +387,10 @@ export async function sendDue(project: string, limit = 20): Promise<{ sent: numb
         })
         .eq('id', app.id as string);
 
-      await client.from('matches').update({ status: 'applied' }).eq('id', app.match_id as string);
+      await client
+        .from('matches')
+        .update({ status: 'applied' })
+        .eq('id', app.match_id as string);
 
       await logEvent({
         userId: app.user_id as string,

@@ -141,7 +141,6 @@ ${message.body.slice(0, 3000)}`,
   };
 }
 
-
 /**
  * Answer the agency, on the client's behalf, within stated limits.
  *
@@ -270,7 +269,9 @@ export async function watchInbox(userId: string, project: string): Promise<numbe
 
   const { data: profile } = await client
     .from('profiles')
-    .select('gmail_account_id, calendar_account_id, inbox_last_checked_at, availability, first_name, last_name, dossierfacile_url, employment_status, monthly_income_cents')
+    .select(
+      'gmail_account_id, calendar_account_id, inbox_last_checked_at, availability, first_name, last_name, dossierfacile_url, employment_status, monthly_income_cents',
+    )
     .eq('id', userId)
     .maybeSingle();
   if (!profile?.gmail_account_id) return 0;
@@ -285,15 +286,59 @@ export async function watchInbox(userId: string, project: string): Promise<numbe
     .not('to_email', 'is', null)
     .limit(40);
 
-  const byEmail = new Map((sentTo ?? []).map((a) => [String(a.to_email).toLowerCase(), a]));
-  if (byEmail.size === 0) return 0;
+  const applications = (sentTo ?? []) as Array<Record<string, any>>;
+  if (applications.length === 0) return 0;
+
+  // Le fil de discussion, et non l'expéditeur.
+  //
+  // Rattacher une candidature à une adresse revient à traiter tout ce qui
+  // arrive de cette adresse comme une réponse. Mesuré : sur une boîte de
+  // démonstration, la première relève a rattaché à la candidature une lettre
+  // d'information et deux courriels sans rapport, vieux de plusieurs jours,
+  // parce qu'ils venaient de la même personne — et l'agent a répondu à l'un
+  // d'eux ses disponibilités de visite. Le fil Gmail, lui, ne se trompe pas :
+  // il ne contient que ce qui répond au message qu'on a envoyé.
+  //
+  // Une adresse ne pouvait d'ailleurs pas suffire : deux candidatures vers la
+  // même agence partagent leur clé, donc l'une écrasait l'autre et ne recevait
+  // jamais rien.
+  const { data: outbound } = await client
+    .from('messages')
+    .select('application_id, gmail_thread_id')
+    .in(
+      'application_id',
+      applications.map((a) => a.id as string),
+    )
+    .eq('direction', 'out')
+    .not('gmail_thread_id', 'is', null);
+
+  const byThread = new Map<string, Record<string, any>>();
+  const threaded = new Set<string>();
+  for (const row of (outbound ?? []) as Array<Record<string, any>>) {
+    const application = applications.find((a) => a.id === row.application_id);
+    if (!application) continue;
+    byThread.set(String(row.gmail_thread_id), application);
+    threaded.add(application.id as string);
+  }
+
+  // Le repli par expéditeur ne sert plus qu'aux candidatures dont aucun fil
+  // n'est connu — un envoi dont Gmail n'a pas rendu l'identifiant. Sans lui,
+  // ces conversations-là deviendraient muettes.
+  const byEmail = new Map<string, Record<string, any>>();
+  for (const application of applications) {
+    if (threaded.has(application.id as string)) continue;
+    const key = String(application.to_email).toLowerCase();
+    if (!byEmail.has(key)) byEmail.set(key, application);
+  }
+
+  const addresses = [...new Set(applications.map((a) => String(a.to_email).toLowerCase()))];
 
   const since = profile.inbox_last_checked_at
     ? new Date(profile.inbox_last_checked_at as string)
     : new Date(Date.now() - 7 * 24 * 3600_000);
 
   const query =
-    `(${[...byEmail.keys()].map((e) => `from:${e}`).join(' OR ')}) ` +
+    `(${addresses.map((e) => `from:${e}`).join(' OR ')}) ` +
     `after:${Math.floor(since.getTime() / 1000)}`;
 
   const result = await fetchEmails(profile.gmail_account_id as string, query, 25, userId);
@@ -302,11 +347,31 @@ export async function watchInbox(userId: string, project: string): Promise<numbe
 
   for (const msg of messages) {
     const from = String(msg.sender ?? msg.from ?? '').toLowerCase();
-    const key = [...byEmail.keys()].find((e) => from.includes(e));
-    if (!key) continue;
-    const application = byEmail.get(key)!;
+    const threadId = String(msg.threadId ?? '') || null;
+
+    // Le fil d'abord ; l'adresse seulement pour les candidatures sans fil connu.
+    // Un message venant d'une agence à qui on a écrit, mais sur un autre fil que
+    // le nôtre, n'est pas une réponse : on le laisse où il est.
+    const fallbackKey = [...byEmail.keys()].find((e) => from.includes(e));
+    const application =
+      (threadId ? byThread.get(threadId) : undefined) ??
+      (fallbackKey ? byEmail.get(fallbackKey) : undefined);
+    if (!application) continue;
+    const key = String(application.to_email).toLowerCase();
 
     const messageId = String(msg.messageId ?? msg.id ?? '');
+
+    // Déjà vu : par identifiant Gmail quand on l'a, car c'est le seul qui ne
+    // confond pas deux messages de même objet dans un même fil.
+    if (messageId) {
+      const { data: known } = await client
+        .from('messages')
+        .select('id')
+        .eq('gmail_message_id', messageId)
+        .maybeSingle();
+      if (known) continue;
+    }
+
     const { data: seen } = await client
       .from('application_replies')
       .select('id')
@@ -361,7 +426,12 @@ export async function watchInbox(userId: string, project: string): Promise<numbe
     // client's own replies use, so there is exactly one path out of this
     // system and one place where a send can fail.
     await maybeReply({
-      client, userId, project, application, verdict, profile,
+      client,
+      userId,
+      project,
+      application,
+      verdict,
+      profile,
       agencyMessage: String(msg.messageText ?? msg.snippet ?? ''),
       threadId: String(msg.threadId ?? '') || null,
       subject: String(msg.subject ?? ''),
@@ -470,14 +540,19 @@ export async function watchInbox(userId: string, project: string): Promise<numbe
 }
 
 /** Every client with a connected mailbox. Runs each morning. */
-export async function watchAllInboxes(project: string): Promise<{ clients: number; replies: number }> {
+export async function watchAllInboxes(
+  project: string,
+): Promise<{ clients: number; replies: number }> {
   // Same preflight as the send path. This job runs once a morning, so a
   // permissions failure discovered here would otherwise cost a full day before
   // anyone saw why no reply was ever picked up.
   const preflight = await canExecute();
   if (!preflight.ok) {
-    await logEvent({ type: 'composio.misconfigured', payload: { reason: preflight.reason, job: 'inbox' } });
-    throw new Error(preflight.reason ?? 'Composio ne peut pas exécuter d\'outil');
+    await logEvent({
+      type: 'composio.misconfigured',
+      payload: { reason: preflight.reason, job: 'inbox' },
+    });
+    throw new Error(preflight.reason ?? "Composio ne peut pas exécuter d'outil");
   }
 
   const client = db();
