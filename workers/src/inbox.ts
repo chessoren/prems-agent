@@ -27,7 +27,7 @@ import { db, logEvent } from './db.js';
 import { canExecute, createCalendarEvent, fetchEmails } from './composio.js';
 import { readableAvailability, writeReply } from './negotiate.js';
 
-export type ReplyKind = 'visit_offered' | 'refused' | 'question' | 'other';
+export type ReplyKind = 'visit_offered' | 'visit_confirmed' | 'refused' | 'question' | 'other';
 
 export interface Classification {
   readonly kind: ReplyKind;
@@ -39,26 +39,37 @@ export interface Classification {
 }
 
 /**
- * The four categories, and the line between them.
+ * The five categories, and the line that matters most.
  *
- * `visit_offered` is reserved for a concrete proposal. "Nous reviendrons vers
- * vous" is not a visit, and treating it as one would put a fiction in somebody's
- * calendar - which is worse than missing a real appointment, because they will
- * stop trusting the calendar.
+ * Proposing is not confirming, and the two used to be one category.
+ *
+ * An agency writing "je peux vous proposer lundi 10h ou mardi 14h" has decided
+ * nothing: it is waiting for an answer. Booking on that put an appointment in
+ * somebody's calendar that no one had agreed to — observed live on 30 August,
+ * where two proposed slots became a confirmed 31 August 10:00 before the
+ * candidate had even replied, and neither slot was one they could attend.
+ *
+ * So `visit_offered` is a proposal to answer, and only `visit_confirmed` — the
+ * agency agreeing to a precise moment — reaches the calendar. A fiction in a
+ * calendar is worse than a missing appointment, because it is the entry people
+ * stop trusting.
  */
 const CLASSIFIER_INSTRUCTION = `Tu analyses la réponse d'une agence immobilière à une candidature locative.
 
 Classe le message dans exactement une catégorie :
-- "visit_offered" : UNIQUEMENT si une visite est proposée avec un créneau concret (date, ou date+heure). "Nous reviendrons vers vous" n'est PAS une visite.
+- "visit_offered" : l'agence PROPOSE un ou plusieurs créneaux, sans que rien ne soit encore arrêté. Elle attend une réponse. "Nous reviendrons vers vous" n'est PAS une proposition.
+- "visit_confirmed" : l'agence CONFIRME un rendez-vous précis, déjà arrêté. Exemples : « votre visite est confirmée », « c'est noté pour jeudi 10h », « parfait, je vous attends mardi à 14h », « rendez-vous validé ». Une simple proposition de créneaux n'est jamais une confirmation.
 - "refused" : le bien est loué, indisponible, ou la candidature est écartée.
 - "question" : l'agence demande une information ou une pièce complémentaire.
 - "other" : accusé de réception, message automatique, hors sujet.
 
-Si et seulement si "visit_offered" avec un créneau : donne visitStartISO en ISO 8601 avec fuseau +02:00. Sinon null.
+Dans le doute entre "visit_offered" et "visit_confirmed", choisis "visit_offered" : une visite ratée se rattrape, un rendez-vous inventé dans un agenda ne se rattrape pas.
+
+Si "visit_offered" ou "visit_confirmed" : donne visitStartISO en ISO 8601 avec fuseau +02:00 — le créneau confirmé pour "visit_confirmed", le premier créneau proposé pour "visit_offered". Une confirmation renvoie souvent à un créneau discuté plus haut dans le fil (« parfait pour jeudi ») : retrouve la date exacte dans l'historique fourni. Si elle reste introuvable, rends null plutôt qu'une date devinée.
 Si "question" : propose une réponse courte, polie, en français, que le candidat pourra relire. Sinon null.`;
 
 const ClassificationSchema = z.object({
-  kind: z.enum(['visit_offered', 'refused', 'question', 'other']),
+  kind: z.enum(['visit_offered', 'visit_confirmed', 'refused', 'question', 'other']),
   visitStartISO: z.string().nullable().describe('ISO 8601 avec fuseau, ou null.'),
   visitLocation: z.string().nullable().describe("L'adresse de la visite, ou null."),
   summary: z.string().describe('Une phrase : ce que dit le message.'),
@@ -95,11 +106,28 @@ export async function classify(
   message: { from: string; subject: string; body: string },
   project: string,
   now = new Date(),
+  /**
+   * The thread so far, oldest first.
+   *
+   * A confirmation rarely restates the date: "parfait pour jeudi" only means
+   * something next to the message that proposed Thursday. Without the history
+   * the classifier could recognise the confirmation and produce no date, which
+   * is exactly the case that cannot be booked.
+   */
+  history: readonly string[] = [],
 ): Promise<Classification> {
+  const conversation = history.length
+    ? `Historique du fil, du plus ancien au plus récent :
+${history.slice(-6).join('\n---\n').slice(0, 3000)}
+
+`
+    : '';
+
   const parsed = await runAgentJson<Partial<Classification>>({
     agent: replyClassifier(project),
     prompt: `Date du jour : ${now.toISOString().slice(0, 10)}
 
+${conversation}Dernier message reçu, celui que tu classes :
 De : ${message.from}
 Objet : ${message.subject}
 ${message.body.slice(0, 3000)}`,
@@ -118,16 +146,22 @@ ${message.body.slice(0, 3000)}`,
     };
   }
 
-  const kind: ReplyKind =
-    parsed.kind === 'visit_offered' || parsed.kind === 'refused' || parsed.kind === 'question'
-      ? parsed.kind
-      : 'other';
+  const KINDS: readonly ReplyKind[] = [
+    'visit_offered',
+    'visit_confirmed',
+    'refused',
+    'question',
+    'other',
+  ];
+  const kind: ReplyKind = KINDS.includes(parsed.kind as ReplyKind)
+    ? (parsed.kind as ReplyKind)
+    : 'other';
 
   // A date the model invented, or one in the past, is not a booking. The schema
   // constrains the shape of the answer; it says nothing about whether the date
   // in it is real.
   let start: string | null = null;
-  if (kind === 'visit_offered' && parsed.visitStartISO) {
+  if ((kind === 'visit_offered' || kind === 'visit_confirmed') && parsed.visitStartISO) {
     const t = Date.parse(parsed.visitStartISO);
     if (Number.isFinite(t) && t > now.getTime() - 3600_000) start = new Date(t).toISOString();
   }
@@ -381,6 +415,14 @@ export async function watchInbox(userId: string, project: string): Promise<numbe
       .maybeSingle();
     if (seen) continue;
 
+    // The thread, so a confirmation that names no date can still be dated.
+    const { data: sofar } = await client
+      .from('messages')
+      .select('author, body')
+      .eq('application_id', application.id as string)
+      .order('created_at', { ascending: true })
+      .limit(8);
+
     const verdict = await classify(
       {
         from,
@@ -388,6 +430,8 @@ export async function watchInbox(userId: string, project: string): Promise<numbe
         body: String(msg.messageText ?? msg.snippet ?? ''),
       },
       project,
+      new Date(),
+      (sofar ?? []).map((m) => `${m.author}: ${String(m.body).slice(0, 600)}`),
     );
 
     await client.from('application_replies').insert({
@@ -417,7 +461,10 @@ export async function watchInbox(userId: string, project: string): Promise<numbe
 
     await client
       .from('applications')
-      .update({ status: verdict.kind === 'visit_offered' ? 'visit_booked' : 'replied' })
+      // Proposed is not booked. An agency offering two slots is waiting for an
+      // answer, and the application is still a live conversation until it
+      // confirms one.
+      .update({ status: verdict.kind === 'visit_confirmed' ? 'visit_booked' : 'replied' })
       .eq('id', application.id as string);
 
     // Answer it, unless it was a refusal or the thread has gone on too long.
@@ -437,7 +484,22 @@ export async function watchInbox(userId: string, project: string): Promise<numbe
       subject: String(msg.subject ?? ''),
     });
 
-    if (verdict.kind === 'visit_offered' && verdict.visitStartISO) {
+    // The calendar is written on a confirmation and on nothing else.
+    //
+    // A date without a confirmation is a proposal; a confirmation without a
+    // date is a sentence we could not resolve against the thread. Neither is an
+    // appointment, and both used to become one.
+    if (verdict.kind === 'visit_confirmed' && !verdict.visitStartISO) {
+      await logEvent({
+        userId,
+        type: 'visit.confirmed_without_date',
+        subjectType: 'application',
+        subjectId: application.id as string,
+        payload: { summary: verdict.summary, from: key },
+      });
+    }
+
+    if (verdict.kind === 'visit_confirmed' && verdict.visitStartISO) {
       const start = new Date(verdict.visitStartISO);
       const end = new Date(start.getTime() + 30 * 60_000);
 
