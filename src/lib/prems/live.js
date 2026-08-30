@@ -235,6 +235,36 @@ export async function saveAvailability(slots) {
 }
 
 /**
+ * Delete the account, and everything hanging off it.
+ *
+ * `delete_my_account` (0020) is bounded to `auth.uid()`, so this cannot reach
+ * anyone else's data — the identity is not a parameter. The cascade takes the
+ * profile, the searches, the matches, the applications, the threads and the
+ * visits with it.
+ *
+ * Irreversible, and deliberately not softened: a "deleted" account that still
+ * holds rows is the worst of both worlds, and this exists precisely so a
+ * demonstration can start again from nothing.
+ */
+export async function deleteAccount() {
+  const supabase = client();
+  if (!supabase) return false;
+  const session = await ensureSession();
+  if (!session?.user?.id) return false;
+
+  const { error } = await supabase.rpc('delete_my_account');
+  if (error) {
+    console.warn('[prems] compte non supprimé :', error.message);
+    return false;
+  }
+
+  // The session outlives the row it points at, so it is ended here rather than
+  // left for the next request to discover.
+  await supabase.auth.signOut().catch(() => {});
+  return true;
+}
+
+/**
  * Add the client's own message to a thread.
  *
  * Written as a row, not sent from here: the worker owns every outgoing

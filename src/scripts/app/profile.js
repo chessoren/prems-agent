@@ -21,6 +21,7 @@ import {
   startCheckout,
 } from '../../lib/prems/billing.js';
 import * as mailbox from '../../lib/prems/mailbox.js';
+import * as live from '../../lib/prems/live.js';
 import * as billing from '../../lib/prems/billing.js';
 import {
   h,
@@ -646,6 +647,60 @@ export default function renderProfile(ctx) {
       { class: 'pm-foot-note' },
       'Tes documents sont chiffrés, dans un espace privé auquel toi seul as accès, et ' +
         'supprimés automatiquement au bout de 90 jours.',
+    ),
+
+    signOutSection(),
+  );
+}
+
+/* -------------------------------------------------------------------------
+ * 8. Leaving
+ * ------------------------------------------------------------------------- */
+
+/**
+ * Sign out — which here means delete the account.
+ *
+ * The two are deliberately the same action, and the label says so rather than
+ * hiding it: this button exists so a run can be started over from nothing, and
+ * a sign-out that left the old account behind would defeat that. Everything
+ * goes: profile, criteria, matches, applications, threads, visits.
+ *
+ * Guarded by a confirmation because it is irreversible and the button sits at
+ * the bottom of a tab people scroll through.
+ */
+function signOutSection() {
+  const leave = button('Se déconnecter et supprimer mon compte', { variant: 'light' });
+
+  leave.addEventListener('click', async () => {
+    const ok = window.confirm(
+      'Se déconnecter supprime définitivement ce compte et toutes ses données : ' +
+        'critères, candidatures, conversations et visites. Continuer ?',
+    );
+    if (!ok) return;
+
+    leave.disabled = true;
+    const done = await live.deleteAccount();
+    if (!done) {
+      leave.disabled = false;
+      toast('Le compte n’a pas pu être supprimé. Réessaie dans un instant.');
+      return;
+    }
+
+    // The device copy of the draft goes too, otherwise the next onboarding
+    // starts pre-filled with someone else's answers.
+    store.reset();
+    agent.reset();
+    location.href = '/onboarding/';
+  });
+
+  return h(
+    'div',
+    { class: 'pm-leave' },
+    leave,
+    h(
+      'p',
+      { class: 'pm-foot-note' },
+      'Irréversible. Tout est effacé, et tu peux refaire l’inscription immédiatement.',
     ),
   );
 }

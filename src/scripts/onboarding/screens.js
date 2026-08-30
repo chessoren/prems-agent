@@ -1,5 +1,5 @@
 /**
- * The thirteen screens.
+ * The screens of the flow.
  *
  * Each exports the same shape, so the controller in index.js stays dumb:
  *
@@ -8,17 +8,18 @@
  *   full       true for screens that own the whole viewport (hook, celebration)
  *   build(ctx) returns { body, cta, hint, onNext }
  *
- * `onNext` returns the id of the next screen, which is how the conditional
- * guarantor branch is expressed without the controller knowing about it.
+ * `onNext` returns the id of the next screen, so a screen that wants to skip
+ * or reorder what follows can say so without the controller knowing about it.
  */
 import * as store from '../../lib/prems/store.js';
 import * as geo from '../../lib/prems/geo.js';
 import * as inventory from '../../lib/prems/listings.js';
-import { upload, humanSize, validate } from '../../lib/prems/documents.js';
 import { client, ensureSession, isConfigured } from '../../lib/prems/supabase.js';
 import { scan as runScan, isAvailable as ocrAvailable } from '../../lib/prems/ocr.js';
 import { PLANS, PAYMENTS_ENABLED, checkoutUrl, startCheckout } from '../../lib/prems/billing.js';
 import * as mailbox from '../../lib/prems/mailbox.js';
+import { DAYS, SLOTS } from '../../lib/prems/agent.js';
+import { saveAvailability } from '../../lib/prems/live.js';
 import { track } from '../../lib/prems/analytics.js';
 import {
   h,
@@ -913,404 +914,111 @@ const income = {
           showError(amount, 'Entre ton revenu net mensuel.');
           return false;
         }
+        // `needsGuarantor` is still derived - the application email says whether
+        // one is available - but it no longer opens a screen. The three-times
+        // rule is guidance for the visitor, not a form to fill in now.
         store.set({ incomeCents: value * 100, needsGuarantor: value < store.get().budget * 3 });
-        // The conditional branch lives here, not in the controller.
-        return store.get().needsGuarantor ? 'guarantor' : 'identity';
+        return 'availability';
       },
     };
   },
 };
 
 /* =========================================================================
- * Screen 8 - guarantor (conditional)
+ * Screen 8 - when can you visit
+ *
+ * The screen that replaced three.
+ *
+ * Guarantor, identity papers and a proof of address used to sit here: eleven
+ * fields and two file uploads, asked before the agent had done anything at all.
+ * They belong to a rental file, and a rental file is owed to an agency that has
+ * already answered - not to someone who has yet to see a single apartment.
+ *
+ * What the agent genuinely cannot work without is this. Measured on 30 August,
+ * live: with no saved slots the agent answered a landlord who had proposed two
+ * precise times with "propose me something" - because it had nothing it could
+ * commit to. With slots, the same reply became a real counter-proposal, read
+ * against the client's own Google Calendar.
+ *
+ * Coarse on purpose, and the same vocabulary the app uses: nobody knows which
+ * quarter-hour they are free in nine days, and four moments a day is enough for
+ * an agency to propose something that works.
  * ========================================================================= */
-const RELATIONS = [
-  { value: 'parent', label: 'Un parent', emoji: '👨‍👩‍👧' },
-  { value: 'proche', label: 'Un proche', emoji: '🫱' },
-  { value: 'visale', label: 'Garantie Visale', hint: 'Gratuite, garantie par l’État', emoji: '🇫🇷' },
-];
-
-const guarantor = {
-  progress: 68,
+const availability = {
+  progress: 72,
   back: true,
-  eyebrow: 'Ton dossier',
-  title: 'Qui se porte garant ?',
-  subtitle: 'Tu peux compléter ses informations plus tard — on garde ta place dans la file.',
+  eyebrow: 'Dernière question',
+  title: 'Quand peux-tu visiter ?',
+  subtitle:
+    'C’est ce qui permet à l’agent de proposer un créneau plutôt que d’en demander un. Deux minimum.',
   build(ctx) {
-    const draft = store.get();
+    const selected = new Set(store.get().availability ?? []);
 
-    const name = input({
-      type: 'text',
-      placeholder: 'Prénom et nom',
-      autocomplete: 'off',
-      value: draft.guarantorName || '',
-      'aria-label': 'Nom du garant',
-    });
-
-    const guarantorIncome = input({
-      type: 'text',
-      inputmode: 'numeric',
-      placeholder: '3 600',
-      value: draft.guarantorIncomeCents ? String(draft.guarantorIncomeCents / 100) : '',
-      'aria-label': 'Revenu net mensuel du garant',
-    });
-
-    const relations = h(
-      'div',
-      { class: 'ob-options' },
-      RELATIONS.map((item) => option({ ...item, selected: draft.guarantorRelation === item.value })),
-    );
-
-    optionGroup(relations, (value) => {
-      store.set({ guarantorRelation: value });
-      // Visale replaces a person entirely, so the identity fields go away.
-      const isVisale = value === 'visale';
-      personal.hidden = isVisale;
-      ctx.setValid(isVisale || name.value.trim().length > 1);
-    });
-
-    const guarantorFeedback = scanNote();
-
-    const personal = h(
-      'div',
-      { hidden: draft.guarantorRelation === 'visale' },
-      field({ label: 'Nom du garant', input: name }),
-      field({
-        label: 'Son revenu net mensuel',
-        optional: true,
-        input: h(
-          'span',
-          { class: 'ob-affix' },
-          h('span', { class: 'ob-affix__prefix' }, '€'),
-          guarantorIncome,
-        ),
-      }),
-      shortcuts('Aller plus vite', [
-        scanShortcut({
-          kind: 'garant',
-          label: 'Photographier son bulletin de salaire',
-          feedback: guarantorFeedback,
-          apply(fields) {
-            if (!fields.netMonthlyEuros) return [];
-            guarantorIncome.value = fields.netMonthlyEuros.toLocaleString('fr-FR');
-            return ['Revenu du garant rempli'];
-          },
-        }),
-      ]),
-      guarantorFeedback,
-    );
-
-    name.addEventListener('input', () => ctx.setValid(name.value.trim().length > 1));
-    guarantorIncome.addEventListener('input', () => {
-      const digits = guarantorIncome.value.replace(/[^\d]/g, '').slice(0, 7);
-      guarantorIncome.value = digits ? Number(digits).toLocaleString('fr-FR') : '';
-    });
-
-    return {
-      body: h('div', {}, relations, h('div', { style: { height: '20px' } }), personal),
-      valid: draft.guarantorRelation === 'visale' || Boolean(draft.guarantorName),
-      hint: 'Un dossier avec garant passe devant un dossier incomplet.',
-      onNext() {
-        const relation = store.get().guarantorRelation;
-        if (!relation) return false;
-        if (relation !== 'visale') {
-          const digits = Number(guarantorIncome.value.replace(/[^\d]/g, ''));
-          store.set({
-            guarantorName: name.value.trim() || null,
-            guarantorIncomeCents: digits ? digits * 100 : null,
-          });
-        }
-        return 'identity';
-      },
-    };
-  },
-};
-
-/* =========================================================================
- * Screen 9 - identity, manual first
- * ========================================================================= */
-const ID_TYPES = [
-  { value: 'cni', label: "Carte d'identité", emoji: '🪪' },
-  { value: 'passeport', label: 'Passeport', emoji: '📘' },
-  { value: 'titre_sejour', label: 'Titre de séjour', emoji: '🗂️' },
-];
-
-const identity = {
-  progress: 78,
-  back: true,
-  eyebrow: 'Ton dossier',
-  title: 'Ton identité',
-  subtitle: 'Les agences vérifient que le dossier correspond bien à la personne qui visite.',
-  build(ctx) {
-    const draft = store.get();
-
-    const first = input({ type: 'text', autocomplete: 'given-name', placeholder: 'Camille', value: draft.firstName || '' });
-    const last = input({ type: 'text', autocomplete: 'family-name', placeholder: 'Durand', value: draft.lastName || '' });
-    const birth = input({ type: 'date', max: new Date().toISOString().slice(0, 10), value: draft.birthDate || '' });
-    const number = input({ type: 'text', placeholder: '12AB34567', value: draft.idNumber || '' });
-
-    const types = h(
-      'div',
-      { class: 'ob-options' },
-      ID_TYPES.map((item) => option({ ...item, selected: draft.idType === item.value })),
-    );
-
-    const check = () =>
-      ctx.setValid(
-        first.value.trim().length > 1 &&
-          last.value.trim().length > 1 &&
-          Boolean(birth.value) &&
-          Boolean(store.get().idType) &&
-          number.value.trim().length > 3,
-      );
-
-    optionGroup(types, (value) => {
-      store.set({ idType: value });
-      check();
-    });
-    for (const el of [first, last, birth, number]) el.addEventListener('input', check);
-
-    const feedback = scanNote();
-
-    /** Write what the scan read into the inputs, and say what was filled. */
-    const applyScan = (fields) => {
-      const filled = [];
-
-      if (fields.firstName) {
-        first.value = fields.firstName;
-        filled.push('Prénom');
-      }
-      if (fields.lastName) {
-        last.value = fields.lastName;
-        filled.push('Nom');
-      }
-      if (fields.birthDate) {
-        birth.value = fields.birthDate;
-        filled.push('Date de naissance');
-      }
-      if (fields.documentNumber) {
-        number.value = fields.documentNumber;
-        filled.push('Numéro');
-      }
-      if (fields.documentType) {
-        store.set({ idType: fields.documentType });
-        for (const card of types.querySelectorAll('.ob-option')) {
-          const selected = card.dataset.value === fields.documentType;
-          card.dataset.selected = String(selected);
-          card.setAttribute('aria-pressed', String(selected));
-        }
-        filled.push('Type de pièce');
-      }
-
-      check();
-      return filled;
+    const counter = h('p', { class: 'ob-hint' });
+    const refresh = () => {
+      const n = selected.size;
+      counter.textContent = n
+        ? `${n} créneau${n > 1 ? 'x' : ''} sélectionné${n > 1 ? 's' : ''}`
+        : 'Sélectionne au moins deux créneaux.';
+      ctx.setValid(n >= 2);
     };
 
-    return {
-      body: h(
+    const grid = h(
+      'div',
+      { class: 'ob-avail', role: 'group', 'aria-label': 'Créneaux de disponibilité' },
+      h(
         'div',
-        {},
-        h(
-          'div',
-          { class: 'ob-field__row' },
-          field({ label: 'Prénom', input: first }),
-          field({ label: 'Nom', input: last }),
-        ),
-        field({ label: 'Date de naissance', input: birth }),
-        h('p', { class: 'ob-field__label', style: { marginBottom: '10px' } }, 'Type de pièce'),
-        types,
-        h('div', { style: { height: '16px' } }),
-        field({ label: 'Numéro du document', input: number }),
-        shortcuts('Aller plus vite', [
-          scanShortcut({
-            kind: 'identite',
-            label: 'Scanner ma pièce avec l’appareil photo',
-            feedback,
-            apply: applyScan,
-          }),
-        ]),
-        feedback,
-        note(
-          'Le scan pré-remplit les champs : tu gardes la main pour vérifier et corriger avant de valider.',
-          'shield',
-        ),
+        { class: 'ob-avail__row ob-avail__row--head' },
+        h('span', { class: 'ob-avail__corner' }),
+        SLOTS.map((slot) => h('span', { class: 'ob-avail__col' }, slot.label)),
       ),
-      valid: Boolean(draft.firstName && draft.lastName && draft.birthDate && draft.idType && draft.idNumber),
-      focus: first,
-      onNext() {
-        store.set({
-          firstName: first.value.trim(),
-          lastName: last.value.trim(),
-          birthDate: birth.value || null,
-          idNumber: number.value.trim(),
-        });
-        return 'address';
-      },
-    };
-  },
-};
-
-/* =========================================================================
- * Screen 10 - proof of current address
- * ========================================================================= */
-const PROOF_TYPES = [
-  { value: 'quittances', label: 'Quittances de loyer', hint: 'Les trois dernières', emoji: '🧾' },
-  { value: 'attestation_bailleur', label: 'Attestation du bailleur', hint: 'Signée par ton propriétaire', emoji: '✍️' },
-  { value: 'attestation_hebergement', label: "Attestation d'hébergement", hint: 'Si tu es hébergé', emoji: '🏠' },
-];
-
-const address = {
-  progress: 89,
-  back: true,
-  eyebrow: 'Dernière pièce',
-  title: 'Ton justificatif de domicile',
-  subtitle: 'La dernière pièce du dossier. Ensuite, l’agent IA prend le relais.',
-  build(ctx) {
-    const draft = store.get();
-    let chosen = null;
-
-    const types = h(
-      'div',
-      { class: 'ob-options' },
-      PROOF_TYPES.map((item) => option({ ...item, selected: draft.addressProofType === item.value })),
-    );
-
-    const picker = h('input', {
-      type: 'file',
-      accept: 'application/pdf,image/jpeg,image/png,image/heic',
-      class: 'ob-sr',
-    });
-
-    // Distinct from the file picker: `capture` opens the camera directly, which
-    // is the actual shortcut on a phone.
-    const camera = h('input', {
-      type: 'file',
-      accept: 'image/*',
-      capture: 'environment',
-      class: 'ob-sr',
-    });
-
-    const fileSlot = h('div', {});
-
-    const accept = async (file) => {
-      if (!file) return;
-      const problem = validate(file);
-      if (problem) {
-        fileSlot.replaceChildren(h('p', { class: 'ob-field__error' }, problem));
-        return;
-      }
-
-      fileSlot.replaceChildren(
+      DAYS.map((day) =>
         h(
           'div',
-          { class: 'ob-file' },
-          h('span', { class: 'ob-spinner', style: { borderTopColor: '#1a1a1a', borderColor: '#e0e0e0' } }),
-          h('span', { class: 'ob-file__name' }, file.name),
-        ),
-      );
-
-      const result = await upload(file, 'domicile', store.get().addressProofType);
-      if (!result.ok) {
-        fileSlot.replaceChildren(h('p', { class: 'ob-field__error' }, result.error));
-        return;
-      }
-
-      store.set({ addressProofName: file.name });
-      chosen = file;
-      fileSlot.replaceChildren(
-        h(
-          'div',
-          { class: 'ob-file' },
-          h('span', {}, '📄'),
-          h('span', { class: 'ob-file__name' }, file.name),
-          h('span', { class: 'ob-file__size' }, humanSize(file.size)),
-          h('button', {
-            class: 'ob-file__remove',
-            type: 'button',
-            'aria-label': 'Retirer le fichier',
-            html: ICONS.close,
-            onClick: () => {
-              chosen = null;
-              store.set({ addressProofName: null });
-              fileSlot.replaceChildren();
-              ctx.setValid(false);
-            },
+          { class: 'ob-avail__row' },
+          h('span', { class: 'ob-avail__day' }, day.short),
+          SLOTS.map((slot) => {
+            const id = `${day.id}-${slot.id}`;
+            const cell = h('button', {
+              class: 'ob-avail__cell',
+              type: 'button',
+              'data-selected': String(selected.has(id)),
+              'aria-pressed': String(selected.has(id)),
+              'aria-label': `${day.label} ${slot.label}, ${slot.range}`,
+              onClick: () => {
+                if (selected.has(id)) selected.delete(id);
+                else selected.add(id);
+                cell.dataset.selected = String(selected.has(id));
+                cell.setAttribute('aria-pressed', String(selected.has(id)));
+                refresh();
+              },
+            });
+            return cell;
           }),
         ),
-      );
-      ctx.setValid(true);
-    };
-
-    picker.addEventListener('change', () => accept(picker.files?.[0]));
-    camera.addEventListener('change', () => accept(camera.files?.[0]));
-
-    const drop = h(
-      'div',
-      {
-        class: 'ob-drop',
-        role: 'button',
-        tabindex: '0',
-        onClick: () => picker.click(),
-        onKeydown: (event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            picker.click();
-          }
-        },
-      },
-      h('span', { class: 'ob-drop__icon', html: ICONS.upload, style: { width: '26px', height: '26px', display: 'inline-flex' } }),
-      h('span', { class: 'ob-drop__title' }, 'Choisir un fichier'),
-      h('span', { class: 'ob-drop__hint' }, 'PDF, JPG ou PNG — 10 Mo maximum'),
+      ),
     );
 
-    for (const [event, handler] of [
-      ['dragover', (e) => { e.preventDefault(); drop.classList.add('is-over'); }],
-      ['dragleave', () => drop.classList.remove('is-over')],
-      ['drop', (e) => { e.preventDefault(); drop.classList.remove('is-over'); accept(e.dataTransfer?.files?.[0]); }],
-    ]) {
-      drop.addEventListener(event, handler);
-    }
-
-    optionGroup(types, (value) => {
-      store.set({ addressProofType: value });
-      ctx.setValid(Boolean(chosen || store.get().addressProofName));
-    });
+    refresh();
 
     return {
-      body: h(
-        'div',
-        {},
-        types,
-        h('div', { style: { height: '20px' } }),
-        drop,
-        picker,
-        camera,
-        fileSlot,
-        shortcuts('Aller plus vite', [
-          {
-            icon: 'camera',
-            label: 'Prendre une photo',
-            onClick: () => camera.click(),
-          },
-        ]),
-        note(
-          'Stocké chiffré, dans un espace privé auquel toi seul as accès. Supprimé automatiquement au bout de 90 jours.',
-          'lock',
-        ),
-      ),
-      valid: Boolean(draft.addressProofName && draft.addressProofType),
-      cta: { label: 'Terminer mon dossier', variant: 'accent', arrow: true },
+      body: h('div', {}, grid, counter),
+      valid: selected.size >= 2,
+      cta: { label: 'Activer mon agent', variant: 'accent', arrow: true },
       onNext() {
-        if (!store.get().addressProofType) return false;
-        store.set({ completedAt: new Date().toISOString() });
-        // Same reasoning as screen 5: the celebration is owed to the visitor
-        // immediately, and the final sync catches up behind it.
+        if (selected.size < 2) return false;
+        const slots = [...selected];
+        store.set({ availability: slots, completedAt: new Date().toISOString() });
+        // Written straight to the profile: it is the copy the worker reads at
+        // eight in the morning, and it cannot read a device.
+        saveAvailability(slots).catch(() => {});
         store.sync().catch(() => {});
         return 'done';
       },
     };
   },
 };
+
 
 /* =========================================================================
  * Final screen
@@ -1357,10 +1065,13 @@ const done = {
 
     setTimeout(confetti, 260);
 
+    // What this list claims has to be what actually happened. It used to
+    // promise "pièces conformes au décret Alur" — true when the flow ended on
+    // two document uploads, a lie the moment they moved out of it.
     const items = [
       `Recherche active à ${draft.city || 'ta ville'}`,
       `${draft.matchCount || 8} appartements déjà identifiés`,
-      'Pièces conformes au décret Alur',
+      `${(draft.availability ?? []).length || 'Tes'} créneaux de visite enregistrés`,
       'Candidature automatique activée',
     ];
 
@@ -1612,9 +1323,7 @@ export const SCREENS = {
   account,
   employment,
   income,
-  guarantor,
-  identity,
-  address,
+  availability,
   done,
   connect,
   pricing,
@@ -1630,9 +1339,7 @@ export const ORDER = [
   'account',
   'employment',
   'income',
-  'guarantor',
-  'identity',
-  'address',
+  'availability',
   'done',
   'connect',
   'pricing',

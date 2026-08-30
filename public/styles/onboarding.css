@@ -2073,3 +2073,75 @@ body.ob-body {
   color: var(--ob-muted, rgba(15, 18, 25, 0.62));
   text-align: center;
 }
+
+/* -------------------------------------------------------------------------
+ * Availability — the last question of the flow.
+ *
+ * Same grid as the app's Visits tab, so the screen someone answers during
+ * onboarding and the one they come back to edit later are visibly the same
+ * object. Days down, moments across: readable on a phone without scrolling
+ * sideways, which a seven-column layout is not.
+ * ------------------------------------------------------------------------- */
+.ob-avail {
+  display: grid;
+  gap: 5px;
+}
+
+.ob-avail__row {
+  display: grid;
+  grid-template-columns: 42px repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  align-items: center;
+}
+
+.ob-avail__corner {
+  display: block;
+}
+
+.ob-avail__col {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ob-muted, rgba(15, 18, 25, 0.62));
+  text-align: center;
+  padding-bottom: 4px;
+}
+
+.ob-avail__day {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ob-muted, rgba(15, 18, 25, 0.62));
+}
+
+.ob-avail__cell {
+  height: 38px;
+  padding: 0;
+  border: 1.5px solid var(--color-border, rgba(15, 18, 25, 0.12));
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  transition:
+    background 140ms var(--ob-ease),
+    border-color 140ms var(--ob-ease),
+    transform 140ms var(--ob-ease);
+}
+
+.ob-avail__cell:hover {
+  border-color: rgba(15, 18, 25, 0.3);
+}
+
+.ob-avail__cell[data-selected='true'] {
+  border-color: var(--color-accent, #1a56db);
+  background: var(--color-accent, #1a56db);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.4);
+}
+
+.ob-avail__cell:active {
+  transform: scale(0.92);
+}
+
+.ob-hint {
+  margin-top: 12px;
+  font-size: 0.83rem;
+  color: var(--ob-muted, rgba(15, 18, 25, 0.62));
+  text-align: center;
+}
