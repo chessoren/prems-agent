@@ -282,14 +282,26 @@ export async function createCalendarEvent(
   },
   userId?: string | null,
 ): Promise<ToolResult> {
+  // L'heure murale, et le fuseau à côté.
+  //
+  // `start_datetime` n'accepte pas un instant ISO en UTC : l'action attend une
+  // date-heure locale sans suffixe, avec `timezone` pour la situer. Un
+  // `...Z` est rejeté à la validation — et l'échec était invisible, parce que
+  // l'appelant avale l'exception pour ne pas perdre la visite déjà écrite chez
+  // nous. Mesuré le 30 août pendant une démonstration : visite enregistrée dans
+  // Prems, `google_event_id` resté nul, aucune trace nulle part.
+  const local = wallClock(event.startISO, CALENDAR_TIMEZONE);
+
   return execute(
     'GOOGLECALENDAR_CREATE_EVENT',
     connectedAccountId,
     {
+      calendar_id: 'primary',
       summary: event.summary,
       description: event.description ?? '',
       location: event.location ?? '',
-      start_datetime: event.startISO,
+      start_datetime: local,
+      timezone: CALENDAR_TIMEZONE,
       event_duration_hour: 0,
       event_duration_minutes: Math.max(
         15,
@@ -298,4 +310,32 @@ export async function createCalendarEvent(
     },
     userId,
   );
+}
+
+/** Les visites sont en France ; l'agenda du client aussi. */
+const CALENDAR_TIMEZONE = process.env.CALENDAR_TIMEZONE ?? 'Europe/Paris';
+
+/**
+ * Un instant UTC rendu en heure murale d'un fuseau, sans suffixe.
+ *
+ * `2026-08-31T08:00:00.000Z` devient `2026-08-31T10:00:00` à Paris. Passer par
+ * `Intl` plutôt que par un décalage codé en dur est ce qui fait que l'heure
+ * reste juste des deux côtés du changement d'heure.
+ */
+export function wallClock(instantISO: string, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(instantISO));
+
+  const at = (type: string) => parts.find((p) => p.type === type)?.value ?? '00';
+  // `hour12: false` rend minuit « 24 » sur certains runtimes.
+  const hour = at('hour') === '24' ? '00' : at('hour');
+  return `${at('year')}-${at('month')}-${at('day')}T${hour}:${at('minute')}:${at('second')}`;
 }

@@ -495,6 +495,10 @@ export async function watchInbox(userId: string, project: string): Promise<numbe
           },
           userId,
         );
+        // Composio répond 200 avec `successful: false` plutôt que d'échouer :
+        // sans ce test, un refus ressemble à un succès sans identifiant.
+        if (google.successful === false) throw new Error(google.error ?? 'agenda refusé');
+
         const googleId = (google.data?.id ?? google.data?.event_id) as string | undefined;
         if (googleId && created?.id) {
           await client
@@ -502,8 +506,24 @@ export async function watchInbox(userId: string, project: string): Promise<numbe
             .update({ google_event_id: googleId })
             .eq('id', created.id as string);
         }
-      } catch {
-        /* ours is written; Google can be retried later */
+      } catch (error) {
+        // Écrire pourquoi, et pas seulement continuer.
+        //
+        // Le silence ici a coûté une démonstration : la visite était bien
+        // enregistrée chez nous, `google_event_id` restait nul, et rien nulle
+        // part ne disait que Google avait refusé. Notre copie reste la source
+        // de vérité — la visite n'est jamais perdue — mais un échec muet n'est
+        // pas un échec géré.
+        await logEvent({
+          userId,
+          type: 'calendar.push_failed',
+          subjectType: 'application',
+          subjectId: application.id as string,
+          payload: {
+            starts_at: start.toISOString(),
+            error: (error instanceof Error ? error.message : String(error)).slice(0, 500),
+          },
+        });
       }
 
       await logEvent({
