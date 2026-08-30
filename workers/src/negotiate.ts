@@ -102,7 +102,7 @@ export interface NegotiateInput {
   readonly hasDossier: boolean;
   readonly employment: string | null;
   readonly monthlyIncomeEur: number | null;
-  /** 'question' | 'visit_offered' | 'other' - what the classifier decided. */
+  /** 'question' | 'visit_offered' | 'visit_confirmed' | 'other' - what the classifier decided. */
   readonly kind: string;
   /** The client's Google Calendar connection, when they granted one. */
   readonly calendarAccountId?: string | null;
@@ -155,7 +155,10 @@ Procédure, dans cet ordre :
    domicile — appelle request_document pour que le candidat en soit prévenu,
    puis écris à l'agence que tu la transmets dans la journée. Ne dis jamais que
    tu joins un document que tu n'as pas.
-5. Rédige, puis appelle queue_reply avec le message — ou stand_down si aucune
+5. **Si l'agence vient de confirmer un rendez-vous** (« c'est noté pour jeudi
+   10h », « votre visite est confirmée »), il n'y a plus rien à négocier :
+   accuse réception en une phrase, confirme que tu y seras, et rien de plus.
+6. Rédige, puis appelle queue_reply avec le message — ou stand_down si aucune
    réponse n'est utile.
 
 Règles de rédaction :

@@ -92,6 +92,10 @@ function lifecycle({ match, application, replies, visit }, now) {
     return starts && starts > now ? 'visite_confirmee' : 'visite_passee';
   }
 
+  // A confirmation the worker could not date reaches here with no visit row.
+  // It belongs with the proposals rather than with plain replies: something was
+  // agreed, and the thing still missing is a time.
+  if (replies.some((r) => r.classified_as === 'visit_confirmed')) return 'creneaux_proposes';
   if (replies.some((r) => r.classified_as === 'visit_offered')) return 'creneaux_proposes';
   if (replies.length > 0) return 'reponse_recue';
 
