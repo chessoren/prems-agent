@@ -20,6 +20,7 @@ import { ingest } from './ingest.js';
 import { matchPending } from './match.js';
 import { closeLostMatches, queueApplications, sendDue, sendOutbox } from './apply.js';
 import { watchAllInboxes } from './inbox.js';
+import { runDemoLoop } from './demo.js';
 import { resolveAgencies } from './agency.js';
 
 /** A run must not outlive its schedule, or two of them overlap. */
@@ -60,6 +61,16 @@ async function main(): Promise<void> {
     );
     return;
   }
+  // La démonstration : le cycle entier en boucle serrée, pour qu'on n'attende
+  // pas huit heures devant un public. Voir demo.ts — rien du comportement de
+  // l'agent ne change, seule sa cadence.
+  if (process.env.MODE === 'demo') {
+    const project = process.env.GCP_PROJECT_ID;
+    if (!project) throw new Error('GCP_PROJECT_ID manquant');
+    console.log(modelBanner());
+    return runDemoLoop(project);
+  }
+
   if (process.env.MODE === 'inbox') {
     const project = process.env.GCP_PROJECT_ID;
     if (!project) throw new Error('GCP_PROJECT_ID manquant');

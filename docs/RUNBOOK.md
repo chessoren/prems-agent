@@ -244,6 +244,53 @@ gcloud run jobs execute prems-inbox --region europe-west9 \
   --project gen-lang-client-0781599139 --wait
 ```
 
+#### La version en une commande : le job `prems-demo`
+
+`npm run db:demo` pose l'annonce et laisse les tickets planifiés faire le reste
+— une minute pour le match, deux pour l'envoi, huit heures pour la relève. C'est
+le bon rythme pour tenir un mois sans surveillance, et c'est injouable devant un
+public. `prems-demo` fait exactement le même travail à la cadence d'une
+démonstration : un tour complet toutes les huit secondes, pendant la durée
+qu'on lui donne.
+
+```bash
+gcloud run jobs execute prems-demo --region europe-west9 \
+  --project gen-lang-client-0781599139
+```
+
+Ce que fait chaque tour, dans l'ordre : poser l'annonce pour tout compte ayant
+une boîte connectée et pas encore d'annonce, matcher, candidater, envoyer,
+relever la boîte, répondre. Ce sont les fonctions des jobs planifiés, appelées
+telles quelles — même matching, même rédaction, même classification, mêmes
+garde-fous.
+
+Mesuré sur l'exécution du 28 août : boucle démarrée à 19:27:14, deux
+candidatures parties à 19:27:18 et 19:27:26. Réponse humaine puis réponse de
+l'agent dans les trente secondes qui suivent.
+
+| Variable | Défaut | À quoi elle sert |
+|---|---|---|
+| `DEMO_AGENCY_EMAIL` | `jenie.du.film@gmail.com` | La boîte du « propriétaire », celle où quelqu'un répond en direct. Doit différer du compte connecté. |
+| `DEMO_MINUTES` | `10` | Durée de la boucle. À garder sous `--task-timeout`. |
+| `DEMO_TICK_MS` | `8000` | Intervalle entre deux tours. |
+| `DEMO_RESET` | (actif) | `0` pour conserver l'état de la répétition précédente. |
+
+**La remise à zéro n'est pas un confort.** Deux des trois plafonds de
+`may_send` comptent des candidatures passées — deux messages vers la même
+adresse en sept jours, cinq candidatures ouvertes — donc la troisième
+répétition d'une démonstration ne montrerait plus rien. `demo_reset()` (0018)
+efface la source `demo-agency` et, par cascade, ses matchs et candidatures. Elle
+part du slug : elle ne peut atteindre aucune donnée réelle.
+
+**La portée, elle non plus, n'est pas un confort.** Le mode démonstration
+candidate depuis `matches_ready_to_send_demo` (0018), restreinte à la source
+fabriquée. Ouvrir la vanne globale — en basculant
+`settings.require_subscription_to_apply` à `false`, maintenant que les paiements
+sont coupés côté interface — libérerait du même coup les centaines d'annonces
+réelles en attente : de vrais messages vers de vraies agences, depuis la vraie
+boîte du client, pendant une répétition. C'est une décision d'exploitation, pas
+un réglage de démonstration.
+
 Rien ne distingue cette annonce du catalogue réel pour le pipeline. Pour un
 humain, si : sa source est `demo-agency` et son identifiant externe commence par
 `demo-`. C'est ce qui permet `--remove`, et ce qui évite de la confondre avec de

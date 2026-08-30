@@ -97,6 +97,23 @@ export async function sync() {
   if (!session) return false;
   const uid = session.user.id;
 
+  // Le nom vient du compte Google, plus d'un écran.
+  //
+  // Il ne sert qu'à une chose, mais elle est visible : signer le courriel que
+  // l'agent envoie à l'agence. Le demander une deuxième fois à quelqu'un qui
+  // vient de se connecter avec un compte qui le porte déjà était exactement le
+  // genre d'écran qui fait abandonner un parcours. Rien n'est écrasé : si une
+  // valeur est déjà là, elle gagne.
+  if (!state.firstName || !state.lastName) {
+    const meta = session.user?.user_metadata ?? {};
+    const full = String(meta.full_name || meta.name || '').trim();
+    const given = String(meta.given_name || full.split(/\s+/)[0] || '').trim();
+    const family = String(meta.family_name || full.split(/\s+/).slice(1).join(' ')).trim();
+    if (given || family) {
+      set({ firstName: state.firstName || given || null, lastName: state.lastName || family || null });
+    }
+  }
+
   const profile = {
     id: uid,
     phone: state.phone,

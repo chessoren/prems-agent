@@ -26,7 +26,8 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers: { 'x-api-key': apiKey(), 'Content-Type': 'application/json', ...(init.headers ?? {}) },
   });
   const text = await response.text();
-  if (!response.ok) throw new Error(`composio ${path}: HTTP ${response.status} ${text.slice(0, 300)}`);
+  if (!response.ok)
+    throw new Error(`composio ${path}: HTTP ${response.status} ${text.slice(0, 300)}`);
   return (text ? JSON.parse(text) : {}) as T;
 }
 
@@ -97,7 +98,7 @@ export async function canExecute(): Promise<{ ok: boolean; reason: string | null
         ok: false,
         reason:
           'la clé Composio est en lecture seule : il lui manque le droit "tool_execution". ' +
-          'Aucun e-mail ne peut être envoyé ni lu tant qu\'elle n\'est pas élargie.',
+          "Aucun e-mail ne peut être envoyé ni lu tant qu'elle n'est pas élargie.",
       };
     }
     return { ok: true, reason: null };
@@ -130,6 +131,39 @@ export async function sendEmail(
   const body = args.attachmentUrl
     ? `${args.body}\n\nMon dossier de location (DossierFacile, vérifié) :\n${args.attachmentUrl}`
     : args.body;
+
+  // Répondre et écrire ne sont pas la même action.
+  //
+  // `GMAIL_SEND_EMAIL` accepte bien un `thread_id`, mais Gmail ne raccroche un
+  // message à un fil que s'il porte aussi les en-têtes `In-Reply-To` et
+  // `References` : sans eux, le fil demandé est ignoré et un nouveau s'ouvre.
+  // Mesuré le 28 août — la réponse de l'agent est repartie sur un identifiant de
+  // fil inédit, donc dans une conversation séparée côté agence. Pour un agent
+  // dont tout l'intérêt est de tenir une négociation, c'est un défaut visible :
+  // l'agence reçoit quatre courriels sans lien au lieu d'un échange.
+  //
+  // L'action dédiée pose ces en-têtes. Comme pour l'agenda, le nom est essayé
+  // plutôt que supposé, et l'envoi simple reste le repli : une réponse mal
+  // raccrochée vaut infiniment mieux qu'une réponse jamais partie.
+  if (args.threadId) {
+    try {
+      const replied = await execute(
+        'GMAIL_REPLY_TO_THREAD',
+        connectedAccountId,
+        {
+          thread_id: args.threadId,
+          recipient_email: args.to,
+          message_body: body,
+          ...(args.bcc ? { bcc: [args.bcc] } : {}),
+          is_html: false,
+        },
+        userId,
+      );
+      if (replied.successful !== false) return replied;
+    } catch {
+      /* action absente ou refusée : on retombe sur l'envoi simple */
+    }
+  }
 
   return execute(
     'GMAIL_SEND_EMAIL',
@@ -248,14 +282,26 @@ export async function createCalendarEvent(
   },
   userId?: string | null,
 ): Promise<ToolResult> {
+  // L'heure murale, et le fuseau à côté.
+  //
+  // `start_datetime` n'accepte pas un instant ISO en UTC : l'action attend une
+  // date-heure locale sans suffixe, avec `timezone` pour la situer. Un
+  // `...Z` est rejeté à la validation — et l'échec était invisible, parce que
+  // l'appelant avale l'exception pour ne pas perdre la visite déjà écrite chez
+  // nous. Mesuré le 30 août pendant une démonstration : visite enregistrée dans
+  // Prems, `google_event_id` resté nul, aucune trace nulle part.
+  const local = wallClock(event.startISO, CALENDAR_TIMEZONE);
+
   return execute(
     'GOOGLECALENDAR_CREATE_EVENT',
     connectedAccountId,
     {
+      calendar_id: 'primary',
       summary: event.summary,
       description: event.description ?? '',
       location: event.location ?? '',
-      start_datetime: event.startISO,
+      start_datetime: local,
+      timezone: CALENDAR_TIMEZONE,
       event_duration_hour: 0,
       event_duration_minutes: Math.max(
         15,
@@ -264,4 +310,32 @@ export async function createCalendarEvent(
     },
     userId,
   );
+}
+
+/** Les visites sont en France ; l'agenda du client aussi. */
+const CALENDAR_TIMEZONE = process.env.CALENDAR_TIMEZONE ?? 'Europe/Paris';
+
+/**
+ * Un instant UTC rendu en heure murale d'un fuseau, sans suffixe.
+ *
+ * `2026-08-31T08:00:00.000Z` devient `2026-08-31T10:00:00` à Paris. Passer par
+ * `Intl` plutôt que par un décalage codé en dur est ce qui fait que l'heure
+ * reste juste des deux côtés du changement d'heure.
+ */
+export function wallClock(instantISO: string, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(instantISO));
+
+  const at = (type: string) => parts.find((p) => p.type === type)?.value ?? '00';
+  // `hour12: false` rend minuit « 24 » sur certains runtimes.
+  const hour = at('hour') === '24' ? '00' : at('hour');
+  return `${at('year')}-${at('month')}-${at('day')}T${hour}:${at('minute')}:${at('second')}`;
 }
