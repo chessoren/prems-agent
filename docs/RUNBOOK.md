@@ -296,6 +296,37 @@ humain, si : sa source est `demo-agency` et son identifiant externe commence par
 `demo-`. C'est ce qui permet `--remove`, et ce qui évite de la confondre avec de
 vraies données dans une requête d'exploitation.
 
+### 3 quater. Éteindre — et rallumer
+
+Le produit ne s'éteint pas en supprimant quoi que ce soit. Tout ce qui coûte
+de l'argent est déclenché par Cloud Scheduler : le scraping toutes les minutes,
+les envois toutes les deux, la relève de boîte deux fois par jour. Mettre les
+six planificateurs en pause suffit à tout arrêter — plus une requête sortante,
+plus un appel de modèle, plus un courriel.
+
+```bash
+for j in prems-scrape-bienici-tick prems-match-tick prems-enrich-tick \
+         prems-agencies-tick prems-apply-tick prems-inbox-tick; do
+  gcloud scheduler jobs pause "$j" --location europe-west9 \
+    --project gen-lang-client-0781599139
+done
+gcloud scheduler jobs list --location europe-west9 \
+  --project gen-lang-client-0781599139 --format='table(name.basename(),state)'
+```
+
+`resume` à la place de `pause` remet tout en marche. Rien d'autre ne change :
+les jobs Cloud Run, les images, les secrets, les rôles IAM et la base restent
+exactement où ils sont, et un job Cloud Run à l'arrêt ne coûte rien.
+
+**Ce qui continue de coûter, à l'arrêt**, et c'est peu : le stockage des images
+dans Artifact Registry, et l'abonnement Supabase. Pour descendre à zéro côté
+Google il faudrait supprimer les images — ce qui rendrait impossible de
+rallumer sans reconstruire, donc à ne faire que pour un arrêt définitif.
+
+**Ce que la pause ne couvre pas** : une exécution lancée à la main
+(`gcloud run jobs execute`) part quand même. C'est voulu — c'est ainsi qu'on
+filme une démonstration sur un système par ailleurs éteint.
+
 ### 4. Le modèle et sa région — à revérifier avant tout déploiement
 
 Les modèles sont nommés une seule fois, dans `workers/src/agent.ts`. Aucun autre
