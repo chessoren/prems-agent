@@ -24,7 +24,7 @@
  * ignored it produced a plausible sentence naming a day nobody was free — and
  * nothing downstream could tell that apart from a real proposal. Now the slots
  * are behind `get_client_availability`, the facts behind `get_client_facts`, and
- * a reply is a call to `queue_reply`. What the agent may do is a list of four
+ * a reply is a call to `queue_reply`. What the agent may do is a list of six
  * functions, and which ones it actually called is recorded next to the message
  * it produced, so "why did it propose Tuesday?" has an answer that is not a
  * guess about what the model was thinking.
@@ -33,10 +33,10 @@
  * caller, which puts it in the same outbox a client's own reply goes through.
  * One path out of this system, one place a send can fail.
  */
-import { FunctionTool, LlmAgent } from '@google/adk';
+import { Agent, tool } from '@strands-agents/sdk';
 import { z } from 'zod';
 
-import { gemini, runAgent } from './agent.js';
+import { bedrock, runAgent } from './agent.js';
 import { findBusySlots } from './composio.js';
 import { db } from './db.js';
 
@@ -113,7 +113,7 @@ export interface NegotiateInput {
 }
 
 /**
- * A plain reply, used when Vertex is unavailable.
+ * A plain reply, used when Bedrock is unavailable.
  *
  * The alternative is not replying, which loses the apartment for a reason the
  * client would never accept.
@@ -181,17 +181,16 @@ N'appelle queue_reply ou stand_down qu'une seule fois : c'est la fin de ton tour
  */
 function negotiator(
   input: NegotiateInput,
-  project: string,
   sink: { reply: string | null },
   asked: string[],
-): LlmAgent {
+): Agent {
   const slots = readableAvailability(input.availability);
 
-  const getAvailability = new FunctionTool({
+  const getAvailability = tool({
     name: 'get_client_availability',
     description:
       "Les créneaux où le candidat peut visiter, tels qu'il les a enregistrés. À appeler avant toute proposition de date.",
-    execute: () =>
+    callback: () =>
       slots
         ? { available: true, creneaux: slots }
         : {
@@ -201,11 +200,11 @@ function negotiator(
           },
   });
 
-  const getFacts = new FunctionTool({
+  const getFacts = tool({
     name: 'get_client_facts',
     description:
       'Les faits connus sur le candidat. Un champ absent est une information dont nous ne disposons pas et qui ne doit pas être écrite.',
-    execute: () => ({
+    callback: () => ({
       nom: [input.firstName, input.lastName].filter(Boolean).join(' ') || null,
       situation_professionnelle: input.employment,
       revenu_mensuel_net_eur: input.monthlyIncomeEur,
@@ -230,11 +229,11 @@ function negotiator(
    * booked" by a failed lookup accepts a slot the client cannot keep, and that
    * is the one outcome worse than not answering at all.
    */
-  const checkConflicts = new FunctionTool({
+  const checkConflicts = tool({
     name: 'check_calendar_conflicts',
     description:
       "Lit l'agenda réel du candidat et dit, pour chaque créneau proposé par l'agence, s'il est libre ou occupé. À appeler dès que l'agence propose une ou plusieurs dates précises.",
-    parameters: z.object({
+    inputSchema: z.object({
       slots: z
         .array(
           z.object({
@@ -249,7 +248,7 @@ function negotiator(
         )
         .describe("Les créneaux proposés par l'agence, dans l'ordre où elle les a écrits."),
     }),
-    execute: async ({ slots }) => {
+    callback: async ({ slots }) => {
       if (!input.calendarAccountId) {
         return {
           calendrier: 'non connecté',
@@ -303,11 +302,11 @@ function negotiator(
    * promise is kept by the client, so the client has to hear about it: the row
    * written here is what the Agent tab shows, with an upload next to it.
    */
-  const requestDocument = new FunctionTool({
+  const requestDocument = tool({
     name: 'request_document',
     description:
       "Prévient le candidat qu'une pièce ou une information lui est réclamée par l'agence et qu'elle manque à son dossier. À appeler avant de promettre quoi que ce soit à l'agence.",
-    parameters: z.object({
+    inputSchema: z.object({
       kind: z
         .enum(['document', 'answer', 'decision'])
         .describe('document = un fichier, answer = une phrase, decision = un oui ou un non.'),
@@ -320,7 +319,7 @@ function negotiator(
         .describe("Ce qui est demandé, en une ligne, tel qu'on le dirait au candidat."),
       reason: z.string().describe("Pourquoi : ce que l'agence a écrit, en une phrase."),
     }),
-    execute: async ({ kind, docKind, label, reason }) => {
+    callback: async ({ kind, docKind, label, reason }) => {
       if (!input.userId) return { enregistré: false, raison: 'client inconnu' };
       try {
         await db()
@@ -345,17 +344,17 @@ function negotiator(
     },
   });
 
-  const queueReply = new FunctionTool({
+  const queueReply = tool({
     name: 'queue_reply',
     description:
       "Met le message en file d'envoi vers l'agence. C'est l'action finale : ne l'appelle qu'une fois, avec le message complet.",
-    parameters: z.object({
+    inputSchema: z.object({
       body: z.string().describe('Le message, signature comprise.'),
     }),
     // Idempotent on purpose. A model that calls the terminal action twice must
     // not be able to send twice; the second call is told so rather than
     // silently overwriting the first.
-    execute: ({ body }) => {
+    callback: ({ body }) => {
       if (sink.reply !== null)
         return { queued: false, raison: 'un message a déjà été mis en file' };
       sink.reply = body.trim();
@@ -363,23 +362,23 @@ function negotiator(
     },
   });
 
-  const standDown = new FunctionTool({
+  const standDown = tool({
     name: 'stand_down',
     description:
       "N'envoie rien. À utiliser quand aucune réponse n'est utile : un refus, un accusé de réception automatique, un message hors sujet.",
-    parameters: z.object({
+    inputSchema: z.object({
       raison: z.string().describe('Pourquoi il ne faut rien envoyer.'),
     }),
-    execute: ({ raison }) => ({ acknowledged: true, raison }),
+    callback: ({ raison }) => ({ acknowledged: true, raison }),
   });
 
-  return new LlmAgent({
+  return new Agent({
     name: 'prems_negotiator',
-    model: gemini(project),
     description: 'Répond à une agence immobilière au nom du candidat, pour obtenir une visite.',
-    instruction: NEGOTIATOR_INSTRUCTION,
-    generateContentConfig: { temperature: 0.3, maxOutputTokens: 500 },
+    model: bedrock(),
+    systemPrompt: NEGOTIATOR_INSTRUCTION,
     tools: [getAvailability, checkConflicts, getFacts, requestDocument, queueReply, standDown],
+    printer: false,
   });
 }
 
@@ -410,7 +409,7 @@ const SILENCE: ReplyDecision = { body: null, toolCalls: [], asked: [] };
  * turn the agent ended without deciding. Silence is a valid move; a reply that
  * says nothing is not.
  */
-export async function writeReply(input: NegotiateInput, project: string): Promise<ReplyDecision> {
+export async function writeReply(input: NegotiateInput): Promise<ReplyDecision> {
   // Not a prompt instruction. A refusal ends the thread before the agent is
   // built, because a rule the model could talk itself out of is not a rule.
   if (input.kind === 'refused') return SILENCE;
@@ -428,9 +427,10 @@ ${input.agencyMessage.slice(0, 3000)}`;
   let toolCalls: readonly string[] = [];
   try {
     ({ toolCalls } = await runAgent({
-      agent: negotiator(input, project, sink, asked),
+      agent: negotiator(input, sink, asked),
       prompt: message,
-      timeoutMs: 30_000,
+      // Several model turns, one per tool call, with adaptive thinking on each.
+      timeoutMs: 90_000,
     }));
   } catch {
     return { body: fallbackReply(input), toolCalls: [], asked };

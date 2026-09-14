@@ -10,15 +10,15 @@
  *  - No superlatives. "Je serais ravi de découvrir ce bien d'exception" is how
  *    a template announces itself.
  *
- * The model is Gemini 3.7 Flash, on Vertex AI, reached through the Agent
- * Development Kit rather than by hand (see `agent.ts`). The writer is a plain
+ * The model is Claude Opus 5 on Amazon Bedrock, reached through the Strands
+ * Agents SDK rather than by hand (see `agent.ts`). The writer is a plain
  * agent with no tools: everything it may say is in the prompt, and giving it a
  * way to go and read more would only widen what it can get wrong.
  */
-import { LlmAgent } from '@google/adk';
+import { Agent } from '@strands-agents/sdk';
 import { z } from 'zod';
 
-import { gemini, runAgentJson } from './agent.js';
+import { bedrock, runAgentStructured } from './agent.js';
 
 export interface DraftInput {
   readonly firstName: string | null;
@@ -43,7 +43,7 @@ export interface Draft {
 /**
  * A message that does not depend on the model being available.
  *
- * If Vertex is down, an application still goes out - a plain, correct, slightly
+ * If Bedrock is down, an application still goes out - a plain, correct, slightly
  * flatter one. Refusing to write to the agency because the copywriter was
  * unavailable would cost the client the apartment for no reason.
  */
@@ -103,33 +103,32 @@ L'objet doit permettre de retrouver l'annonce sans ouvrir le message : type de b
 /**
  * What the agent must return, declared rather than described.
  *
- * The schema goes to the model as a response schema, so "réponds en JSON
+ * The schema goes to Strands as `structuredOutputSchema`: the model answers by
+ * calling a tool whose input is validated against it, so "réponds en JSON
  * strict" — an instruction that was occasionally ignored — becomes a constraint
- * the API enforces.
+ * checked before anything is sent.
  */
 const DraftSchema = z.object({
   subject: z.string().describe("L'objet : type de bien et ville, rien d'autre."),
   body: z.string().describe("Le corps du message, signature du candidat comprise."),
 });
 
-/** Built once per process: an agent is a description, and this one never varies. */
-let writer: { project: string; agent: LlmAgent } | null = null;
-
-function applicationWriter(project: string): LlmAgent {
-  if (writer?.project === project) return writer.agent;
-  const agent = new LlmAgent({
+/**
+ * Built per call. A Strands agent keeps the conversation it has had, and one
+ * client's application must never be context for the next client's.
+ */
+function applicationWriter(): Agent {
+  return new Agent({
     name: 'prems_application_writer',
-    model: gemini(project),
     description: "Écrit la candidature d'un particulier à une agence immobilière.",
-    instruction: WRITER_INSTRUCTION,
-    generateContentConfig: { temperature: 0.4, maxOutputTokens: 600 },
-    outputSchema: DraftSchema,
+    model: bedrock(),
+    systemPrompt: WRITER_INSTRUCTION,
+    structuredOutputSchema: DraftSchema,
+    printer: false,
   });
-  writer = { project, agent };
-  return agent;
 }
 
-export async function writeDraft(input: DraftInput, project: string): Promise<Draft> {
+export async function writeDraft(input: DraftInput): Promise<Draft> {
   // Whether the income comfortably clears the bar agencies actually apply.
   // Stated as a fact when it is true, never computed for the model to guess at.
   const ratio =
@@ -167,10 +166,11 @@ ${JSON.stringify(
   1,
 )}`;
 
-  const parsed = await runAgentJson<{ subject?: string; body?: string }>({
-    agent: applicationWriter(project),
+  const parsed = await runAgentStructured({
+    agent: applicationWriter(),
+    schema: DraftSchema,
     prompt: message,
-    timeoutMs: 20_000,
+    timeoutMs: 60_000,
   });
 
   if (!parsed?.subject || !parsed.body) return fallbackDraft(input);

@@ -221,10 +221,7 @@ export async function closeLostMatches(): Promise<number> {
  * nothing to fix by trying again, so it is dead-lettered immediately with a
  * reason a human can act on.
  */
-export async function sendDue(
-  project: string,
-  limit = 20,
-): Promise<{ sent: number; failed: number }> {
+export async function sendDue(limit = 20): Promise<{ sent: number; failed: number }> {
   const client = db();
 
   // Fail loudly, before touching a single application. A read-only Composio key
@@ -335,7 +332,7 @@ export async function sendDue(
       hasDossier: Boolean(profile.dossierfacile_url),
     };
 
-    const draft = await writeDraft(input, project);
+    const draft = await writeDraft(input);
     const attempts = ((app.attempts as number) ?? 0) + 1;
 
     try {

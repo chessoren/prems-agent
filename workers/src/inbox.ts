@@ -19,10 +19,10 @@
  * An agent that answers an agency unprompted can commit somebody to a viewing
  * they cannot attend, and the cost of being wrong is borne entirely by them.
  */
-import { LlmAgent } from '@google/adk';
+import { Agent } from '@strands-agents/sdk';
 import { z } from 'zod';
 
-import { MODEL, gemini, runAgentJson } from './agent.js';
+import { MODEL, bedrock, runAgentStructured } from './agent.js';
 import { db, logEvent } from './db.js';
 import { canExecute, createCalendarEvent, fetchEmails } from './composio.js';
 import { readableAvailability, writeReply } from './negotiate.js';
@@ -76,21 +76,20 @@ const ClassificationSchema = z.object({
   suggestedReply: z.string().nullable().describe('Une réponse à faire relire, ou null.'),
 });
 
-/** Built once per process. No tools: reading a message is not an errand. */
-let classifier: { project: string; agent: LlmAgent } | null = null;
-
-function replyClassifier(project: string): LlmAgent {
-  if (classifier?.project === project) return classifier.agent;
-  const agent = new LlmAgent({
+/**
+ * No tools: reading a message is not an errand. Built per call, because a
+ * Strands agent keeps its conversation and one agency's e-mail must never be
+ * context for the next.
+ */
+function replyClassifier(): Agent {
+  return new Agent({
     name: 'prems_reply_classifier',
-    model: gemini(project),
     description: "Décide ce qu'une agence immobilière vient de répondre à une candidature.",
-    instruction: CLASSIFIER_INSTRUCTION,
-    generateContentConfig: { temperature: 0.1, maxOutputTokens: 700 },
-    outputSchema: ClassificationSchema,
+    model: bedrock(),
+    systemPrompt: CLASSIFIER_INSTRUCTION,
+    structuredOutputSchema: ClassificationSchema,
+    printer: false,
   });
-  classifier = { project, agent };
-  return agent;
 }
 
 /**
@@ -104,7 +103,6 @@ function replyClassifier(project: string): LlmAgent {
  */
 export async function classify(
   message: { from: string; subject: string; body: string },
-  project: string,
   now = new Date(),
   /**
    * The thread so far, oldest first.
@@ -123,15 +121,16 @@ ${history.slice(-6).join('\n---\n').slice(0, 3000)}
 `
     : '';
 
-  const parsed = await runAgentJson<Partial<Classification>>({
-    agent: replyClassifier(project),
+  const parsed = await runAgentStructured({
+    agent: replyClassifier(),
+    schema: ClassificationSchema,
     prompt: `Date du jour : ${now.toISOString().slice(0, 10)}
 
 ${conversation}Dernier message reçu, celui que tu classes :
 De : ${message.from}
 Objet : ${message.subject}
 ${message.body.slice(0, 3000)}`,
-    timeoutMs: 20_000,
+    timeoutMs: 60_000,
   });
 
   // An unclassifiable message is 'other', never a guess. Guessing here writes
@@ -193,7 +192,6 @@ ${message.body.slice(0, 3000)}`,
 async function maybeReply(args: {
   client: ReturnType<typeof db>;
   userId: string;
-  project: string;
   application: Record<string, any>;
   verdict: Classification;
   profile: Record<string, any>;
@@ -201,7 +199,7 @@ async function maybeReply(args: {
   threadId: string | null;
   subject: string;
 }): Promise<void> {
-  const { client, userId, project, application, verdict, profile } = args;
+  const { client, userId, application, verdict, profile } = args;
 
   if (verdict.kind === 'refused') return;
 
@@ -261,7 +259,6 @@ async function maybeReply(args: {
       userId,
       applicationId: application.id as string,
     },
-    project,
   );
   if (!decision.body) return;
 
@@ -298,7 +295,7 @@ async function maybeReply(args: {
 }
 
 /** Read one client's replies, classify them, and record what they mean. */
-export async function watchInbox(userId: string, project: string): Promise<number> {
+export async function watchInbox(userId: string): Promise<number> {
   const client = db();
 
   const { data: profile } = await client
@@ -429,7 +426,6 @@ export async function watchInbox(userId: string, project: string): Promise<numbe
         subject: String(msg.subject ?? ''),
         body: String(msg.messageText ?? msg.snippet ?? ''),
       },
-      project,
       new Date(),
       (sofar ?? []).map((m) => `${m.author}: ${String(m.body).slice(0, 600)}`),
     );
@@ -475,7 +471,6 @@ export async function watchInbox(userId: string, project: string): Promise<numbe
     await maybeReply({
       client,
       userId,
-      project,
       application,
       verdict,
       profile,
@@ -622,9 +617,7 @@ export async function watchInbox(userId: string, project: string): Promise<numbe
 }
 
 /** Every client with a connected mailbox. Runs each morning. */
-export async function watchAllInboxes(
-  project: string,
-): Promise<{ clients: number; replies: number }> {
+export async function watchAllInboxes(): Promise<{ clients: number; replies: number }> {
   // Same preflight as the send path. This job runs once a morning, so a
   // permissions failure discovered here would otherwise cost a full day before
   // anyone saw why no reply was ever picked up.
@@ -645,6 +638,6 @@ export async function watchAllInboxes(
     .limit(500);
 
   let replies = 0;
-  for (const p of profiles ?? []) replies += await watchInbox(p.id as string, project);
+  for (const p of profiles ?? []) replies += await watchInbox(p.id as string);
   return { clients: (profiles ?? []).length, replies };
 }

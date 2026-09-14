@@ -208,8 +208,8 @@ function checkCloudRun() {
     else ko('gcp', expected, `absent de ${REGION}`);
   }
 
-  // The model is only half a decision; the region it is served from is the
-  // other half, and only the two jobs that talk to a model carry it.
+  // Only the two jobs that talk to a model need Bedrock: its model ID, its
+  // region, and credentials. A job without keys fails on its first agent turn.
   for (const job of jobs) {
     const name = job?.metadata?.name ?? job?.name;
     if (name !== 'prems-apply' && name !== 'prems-inbox') continue;
@@ -218,12 +218,16 @@ function checkCloudRun() {
         (acc, e) => ({ ...acc, [e.name]: e.value }),
         {},
       ) ?? {};
-    const model = vars.GCP_MODEL ?? 'gemini-3.7-flash (défaut du code)';
-    const location = vars.GCP_MODEL_LOCATION ?? 'global (défaut du code)';
-    if (String(location).startsWith('global')) {
-      warn('gcp', `${name} · modèle`, `${model} @ ${location} — aucune résidence UE`);
+    const model = vars.BEDROCK_MODEL_ID ?? 'eu.anthropic.claude-opus-5 (défaut du code)';
+    const region = vars.AWS_REGION ?? 'eu-west-3 (défaut du code)';
+    const secrets = job?.spec?.template?.template?.spec?.containers?.[0]?.env ?? [];
+    const hasKeys = secrets.some((e) => e.name === 'AWS_ACCESS_KEY_ID');
+    if (!hasKeys) {
+      ko('aws', `${name} · Bedrock`, 'AWS_ACCESS_KEY_ID absent du job — les agents ne peuvent pas appeler Bedrock');
+    } else if (String(model).startsWith('global.')) {
+      warn('aws', `${name} · modèle`, `${model} @ ${region} — aucune résidence UE`);
     } else {
-      ok('gcp', `${name} · modèle`, `${model} @ ${location}`);
+      ok('aws', `${name} · modèle`, `${model} @ ${region}`);
     }
   }
 }

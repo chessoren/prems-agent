@@ -7,7 +7,7 @@
   </defs>
 
   <text x="40" y="46" font-size="26" font-weight="700" fill="#24292f">Prems — de l'annonce publiée à la visite réservée</text>
-  <text x="40" y="72" font-size="15" fill="#57606a">En haut, le pipeline : six jobs Cloud Run, une base qui est la seule vérité. En bas, ce qui décide : trois agents ADK sur Gemini 3.7 Flash.</text>
+  <text x="40" y="72" font-size="15" fill="#57606a">En haut, le pipeline : six jobs Cloud Run, une base qui est la seule vérité. En bas, ce qui décide : trois agents Strands sur Claude Opus 5 (Amazon Bedrock).</text>
 
   <!-- ================= ROW 1 : the pipeline ================= -->
 
@@ -101,8 +101,8 @@
   <!-- ================= ROW 2 : the agents ================= -->
 
   <rect x="250" y="470" width="660" height="420" rx="10" fill="#f2f9f4" stroke="#a3d3b1"/>
-  <text x="266" y="496" font-size="13" font-weight="700" fill="#188038">LES AGENTS · @google/adk</text>
-  <text x="266" y="516" font-size="12" fill="#57606a">Vertex AI · gemini-3.7-flash · endpoint global · identité de service, aucune clé</text>
+  <text x="266" y="496" font-size="13" font-weight="700" fill="#188038">LES AGENTS · Strands Agents SDK</text>
+  <text x="266" y="516" font-size="12" fill="#57606a">Amazon Bedrock · Claude Opus 5 · profil d’inférence eu. · eu-west-3</text>
 
   <rect x="266" y="530" width="200" height="128" rx="8" fill="#ffffff" stroke="#188038"/>
   <text x="278" y="552" font-size="13" font-weight="600" fill="#24292f">prems_application_writer</text>
@@ -126,7 +126,7 @@
   <text x="706" y="594" font-size="12" fill="#57606a">Décide s'il répond, et</text>
   <text x="706" y="612" font-size="12" fill="#57606a">avec quel créneau.</text>
   <text x="706" y="630" font-size="12" font-weight="600" fill="#188038">Le seul qui a des outils</text>
-  <text x="706" y="648" font-size="12" fill="#57606a">— les quatre ci-dessous.</text>
+  <text x="706" y="648" font-size="12" fill="#57606a">— six, dont les quatre ci-dessous.</text>
 
   <rect x="266" y="674" width="628" height="96" rx="8" fill="#ffffff" stroke="#a3d3b1"/>
   <rect x="280" y="688" width="296" height="32" rx="6" fill="#f2f9f4" stroke="#a3d3b1"/>

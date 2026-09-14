@@ -1,5 +1,13 @@
 # État du système
 
+> **Mise à jour du 14 septembre 2026 — agents portés sur Strands + Amazon Bedrock.**
+> Les trois agents tournent désormais sur le **Strands Agents SDK** (TypeScript) avec
+> **Claude Opus 5 via Amazon Bedrock** (`eu.anthropic.claude-opus-5`, `eu-west-3`).
+> Les passages ci-dessous qui parlent d'ADK, de Gemini ou de Vertex AI pour les agents
+> décrivent l'état antérieur ; Vertex AI ne sert plus qu'aux embeddings. La référence à
+> jour est le [README](../README.md) et `npm run bedrock:models` remplace `gcp:models`.
+
+
 À lire en premier. Les détails sont dans `ARCHITECTURE.md` (comment c'est fait),
 `RUNBOOK.md` (comment l'exploiter) et `sources/README.md` (ce qui a été mesuré
 sur les sites).

@@ -11,7 +11,7 @@
  * is a rule about what the agent *did*, not about what it wrote.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { FunctionTool, LlmAgent } from '@google/adk';
+import type { Agent } from '@strands-agents/sdk';
 
 /** What the scripted agent will do on the next call, set per test. */
 let script: Array<{ tool: string; args?: Record<string, unknown> }> = [];
@@ -42,28 +42,33 @@ vi.mock('../src/db.js', () => ({
   logEvent: async () => {},
 }));
 
-vi.mock('../src/agent.js', () => ({
+vi.mock('../src/agent.js', async () => {
+  const { BedrockModel } = await import('@strands-agents/sdk');
+  return {
   MODEL: 'test-model',
+  MODEL_REGION: 'eu-west-3',
   EMBEDDING_MODEL: 'test-embedding-model',
   LOCATION: 'europe-west9',
-  gemini: () => 'test-model',
+  // A real model object that is never called: the script below replaces the turn.
+  bedrock: () => new BedrockModel({ modelId: 'test-model', region: 'eu-west-3' }),
   genai: () => {
     throw new Error('unused');
   },
   // Plays the script against the agent's real tools, so the sink, the argument
   // validation and the idempotence of `queue_reply` are the production ones.
-  runAgent: async ({ agent }: { agent: LlmAgent }) => {
-    const byName = new Map((agent.tools as FunctionTool[]).map((t) => [t.name, t] as const));
+  runAgent: async ({ agent }: { agent: Agent }) => {
+    const byName = new Map(agent.tools.map((t) => [t.name, t] as const));
     const toolCalls: string[] = [];
     for (const step of script) {
       const tool = byName.get(step.tool);
       if (!tool) throw new Error(`l'agent n'a pas d'outil ${step.tool}`);
-      await tool.runAsync({ args: step.args ?? {}, toolContext: undefined as never });
+      await (tool as unknown as { invoke(input: unknown): Promise<unknown> }).invoke(step.args ?? {});
       toolCalls.push(step.tool);
     }
     return { text: null, toolCalls };
   },
-}));
+  };
+});
 
 const { fallbackReply, readableAvailability, writeReply } = await import('../src/negotiate.js');
 
@@ -108,7 +113,7 @@ describe('readableAvailability', () => {
 describe('writeReply', () => {
   it('never answers a refusal, and never even builds an agent for one', async () => {
     script = [{ tool: 'queue_reply', args: { body: 'et pourtant' } }];
-    const decision = await writeReply(input({ kind: 'refused' }), 'p');
+    const decision = await writeReply(input({ kind: 'refused' }));
 
     expect(decision.body).toBeNull();
     // The gate is in code, before the model: nothing ran.
@@ -120,7 +125,7 @@ describe('writeReply', () => {
       { tool: 'get_client_availability' },
       { tool: 'queue_reply', args: { body: 'Bonjour,\n\nMardi après-midi me convient.' } },
     ];
-    const decision = await writeReply(input(), 'p');
+    const decision = await writeReply(input());
 
     expect(decision.body).toContain('Mardi après-midi');
     expect(decision.toolCalls).toEqual(['get_client_availability', 'queue_reply']);
@@ -128,7 +133,7 @@ describe('writeReply', () => {
 
   it('falls back when the client had slots and the agent never looked at them', async () => {
     script = [{ tool: 'queue_reply', args: { body: 'Je suis libre lundi matin.' } }];
-    const decision = await writeReply(input(), 'p');
+    const decision = await writeReply(input());
 
     // A day nobody is free, written confidently, is the failure the tool exists
     // to expose. The flat reply proposes the real slots instead.
@@ -138,12 +143,12 @@ describe('writeReply', () => {
 
   it('keeps a deliberate stand-down, and only a deliberate one', async () => {
     script = [{ tool: 'stand_down', args: { raison: 'accusé de réception automatique' } }];
-    expect((await writeReply(input(), 'p')).body).toBeNull();
+    expect((await writeReply(input())).body).toBeNull();
 
     // An empty turn is not a decision: the agent said nothing and called
     // nothing, which must not read as "it chose silence".
     script = [];
-    expect((await writeReply(input(), 'p')).body).toBe(fallbackReply(input()));
+    expect((await writeReply(input())).body).toBe(fallbackReply(input()));
   });
 
   it('refuses a calendar date invented for a client with no availability', async () => {
@@ -153,7 +158,7 @@ describe('writeReply', () => {
       { tool: 'queue_reply', args: { body: 'Je peux passer le 14 septembre à 15h.' } },
     ];
 
-    expect((await writeReply(noSlots, 'p')).body).toBe(fallbackReply(noSlots));
+    expect((await writeReply(noSlots)).body).toBe(fallbackReply(noSlots));
   });
 
   it('sends once when the agent calls the terminal action twice', async () => {
@@ -163,7 +168,7 @@ describe('writeReply', () => {
       { tool: 'queue_reply', args: { body: 'Le second, qui ne doit pas gagner.' } },
     ];
 
-    expect((await writeReply(input(), 'p')).body).toBe('Le premier message.');
+    expect((await writeReply(input())).body).toBe('Le premier message.');
   });
 });
 
@@ -195,7 +200,7 @@ describe('check_calendar_conflicts', () => {
       { tool: 'queue_reply', args: { body: 'Mardi je ne suis pas libre, jeudi 10h me convient.' } },
     ];
 
-    const decision = await writeReply(input(), 'p');
+    const decision = await writeReply(input());
 
     expect(decision.toolCalls).toContain('check_calendar_conflicts');
     expect(decision.body).toContain('jeudi 10h');
@@ -210,7 +215,7 @@ describe('check_calendar_conflicts', () => {
     // No saved availability: the old guard would have replaced this with the
     // flat message. Having read the calendar is what earns the right to name a
     // date.
-    const decision = await writeReply(input({ availability: [] }), 'p');
+    const decision = await writeReply(input({ availability: [] }));
     expect(decision.body).toContain('3 septembre');
   });
 
@@ -224,7 +229,7 @@ describe('check_calendar_conflicts', () => {
 
     // The tool says so rather than reporting an empty calendar; what the agent
     // does with that is the model's business, but the failure must be visible.
-    const decision = await writeReply(input(), 'p');
+    const decision = await writeReply(input());
     expect(decision.toolCalls).toContain('check_calendar_conflicts');
     expect(decision.body).toBe('Mardi 14h, parfait.');
   });
@@ -246,7 +251,7 @@ describe('request_document', () => {
       { tool: 'queue_reply', args: { body: 'Je vous la transmets dans la journée.' } },
     ];
 
-    const decision = await writeReply(input(), 'p');
+    const decision = await writeReply(input());
 
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({

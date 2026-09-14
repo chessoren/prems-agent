@@ -1,7 +1,7 @@
 {
   "name": "prems-landing-page",
   "version": "1.0.0",
-  "description": "",
+  "description": "Prems — a Strands agent on Amazon Bedrock that applies to rental listings, answers the agency and books the viewing.",
   "main": "index.js",
   "scripts": {
     "dev": "astro dev",
@@ -25,9 +25,9 @@
     "ci": "npm run typecheck && npm run test && npm run build",
     "db:migrate": "NODE_USE_ENV_PROXY=1 node tools/supabase/migrate.mjs",
     "db:inspect": "NODE_USE_ENV_PROXY=1 node tools/supabase/inspect.mjs",
-    "gcp:models": "NODE_USE_ENV_PROXY=1 node tools/gcp-models.mjs",
     "preflight": "NODE_USE_ENV_PROXY=1 node tools/preflight.mjs",
-    "db:demo": "NODE_USE_ENV_PROXY=1 node tools/supabase/seed-demo-agency.mjs"
+    "db:demo": "NODE_USE_ENV_PROXY=1 node tools/supabase/seed-demo-agency.mjs",
+    "bedrock:models": "tsc -b workers && node --env-file-if-exists=.env tools/bedrock-models.mjs"
   },
   "repository": {
     "type": "git",
@@ -35,7 +35,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/chessoren/prems-landing-page/issues"
   },

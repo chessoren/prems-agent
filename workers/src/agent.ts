@@ -2,129 +2,83 @@
  * The agent runtime: one place where a model is named, authenticated and run.
  *
  * Before this file, three workers each carried their own copy of the same forty
- * lines — sign a JWT by hand, exchange it for a token, POST to the Vertex REST
- * endpoint, dig a string out of `candidates[0].content.parts[0].text`. Three
- * copies meant three places to change the model, and three places where a
+ * lines — sign a request by hand, POST it, dig a string out of the response.
+ * Three copies meant three places to change the model, and three places where a
  * retry, a timeout or a tool call would have had to be written again.
  *
- * What replaced it is the Agent Development Kit. The gain is not that the code
- * is shorter, though it is. It is that an agent can now be given *tools* and
- * left to decide which to call: the negotiator asks for the client's
- * availability rather than being handed it, so a slot it proposes is a slot it
- * went and read. What the model may do is a list of functions, not a paragraph
- * of prose asking it nicely.
+ * What replaced it is the Strands Agents SDK. The gain is not that the code is
+ * shorter, though it is. It is that an agent can now be given *tools* and left
+ * to decide which to call: the negotiator asks for the client's availability
+ * rather than being handed it, so a slot it proposes is a slot it went and read.
+ * What the model may do is a list of functions, not a paragraph of prose asking
+ * it nicely.
  *
- * Authentication is Application Default Credentials, which is what Cloud Run
- * already gives the container. The signed-JWT path is gone: locally,
- * `gcloud auth application-default login` or GOOGLE_APPLICATION_CREDENTIALS
- * covers the same ground, and neither one is our code.
+ * The model is Claude on Amazon Bedrock. Authentication is the AWS SDK's default
+ * credential chain — an IAM role where one is attached, AWS_ACCESS_KEY_ID and
+ * AWS_SECRET_ACCESS_KEY otherwise — and none of it is our code.
  */
-import { Gemini, InMemoryRunner, isFinalResponse } from '@google/adk';
-import type { Event, LlmAgent } from '@google/adk';
+import { Agent, BedrockModel } from '@strands-agents/sdk';
+import type { AgentResult } from '@strands-agents/sdk';
 import { GoogleGenAI } from '@google/genai';
+import type { z } from 'zod';
 
 /**
- * Paris, like the jobs themselves and everything else that holds client data.
+ * Claude Opus 5, through an EU cross-region inference profile.
  *
- * Overridable because a region that runs out of a model's capacity is a real
- * failure mode, and moving the workers is a deployment, not a code change.
+ * The `eu.` prefix keeps inference inside European Bedrock regions. These
+ * prompts carry a named person's employment, net monthly income, the days they
+ * are free and their private correspondence with a letting agency; keeping them
+ * in the EU is the default, not an option. `global.anthropic.claude-opus-5`
+ * trades that for capacity — one variable, no code.
+ *
+ * `npm run bedrock:models` checks which of these actually answer from the
+ * configured account and region.
  */
-export const LOCATION = process.env.GCP_REGION ?? 'europe-west9';
+export const MODEL = process.env.BEDROCK_MODEL_ID ?? 'eu.anthropic.claude-opus-5';
 
-/**
- * Gemini 3.7 Flash, on Vertex AI.
- *
- * The path here was two wrong turns. `gemini-2.5-flash-lite` was chosen when
- * the work was pure writing and Flash-Lite was the cheapest model that wrote
- * idiomatic French; the note that came with it — "Gemini 3.5 Flash-Lite does
- * not exist, checked against the live endpoint" — was true of the *Flash-Lite*
- * variant and said nothing about the family, which is how this repository spent
- * a while two generations behind. 3.5 Flash was the correction. 3.7 Flash is
- * the current one, and the reason to take it is the same reason 2.5 Flash-Lite
- * had to go: the negotiator now chooses between four tools, and tool selection
- * is exactly where the smaller and older models are weakest.
- *
- * @see MODEL_LOCATION — the region is not a separate decision from the model.
- */
-export const MODEL = process.env.GCP_MODEL ?? 'gemini-3.7-flash';
-
-/**
- * Where each model is actually served from. Measured, not read.
- *
- * A model and its region are one decision, and this table is the only place
- * that pairing exists. Every line below was established by calling the live
- * endpoint on 2026-08-27 — `npm run gcp:models` — after two rounds of getting
- * it wrong from documentation:
- *
- *   gemini-3.7-flash   global only. 404 in every European region tried.
- *   gemini-3.5-flash   global, and europe-west3 (Frankfurt). Nowhere else in
- *                      Europe — not west9, west4, west1, north1, southwest1.
- *   gemini-2.5-flash   every European region tried, europe-west9 included.
- *
- * And the correction that matters most: **there is no `eu` endpoint.**
- * `eu-aiplatform.googleapis.com` answers 400 "Invalid hostname". The European
- * multi-region exists for Document AI, which is where the idea came from; it
- * does not exist for Vertex AI. A fallback documented here for two commits
- * would have failed on its first call.
- *
- * **The trade, in one line.** `gemini-3.7-flash` runs on the global endpoint,
- * which routes and processes anywhere in the world: no EU data residency, no
- * in-region ML processing. These prompts carry a named person's employment,
- * net monthly income, the days they are free, and their private correspondence
- * with a letting agency. Two ways back, both two variables and no code:
- *
- *   GCP_MODEL=gemini-3.5-flash GCP_MODEL_LOCATION=europe-west3   # EU, newest
- *   GCP_MODEL=gemini-2.5-flash GCP_MODEL_LOCATION=europe-west9   # Paris, with the jobs
- */
-const SERVED_FROM: Record<string, string> = {
-  'gemini-3.7-flash': 'global',
-  'gemini-3.5-flash': 'europe-west3',
-  'gemini-2.5-flash': 'europe-west9',
-};
-
-export const MODEL_LOCATION = process.env.GCP_MODEL_LOCATION ?? SERVED_FROM[MODEL] ?? 'global';
+/** Paris, like the clients. Where Bedrock is called from. */
+export const MODEL_REGION = process.env.AWS_REGION ?? 'eu-west-3';
 
 /**
  * One line in the logs of every run that talks to a model.
  *
  * A residency decision that is only visible in a source file is a residency
- * decision nobody re-examines. This puts it in Cloud Logging, on every run,
- * where an operator sees it without being asked to go and look.
+ * decision nobody re-examines.
  */
 export function modelBanner(): string {
-  const residency =
-    MODEL_LOCATION === 'global'
-      ? 'AUCUNE résidence des données — traitement mondial'
-      : `données traitées en « ${MODEL_LOCATION} »`;
-  return `modèle: ${MODEL} @ ${MODEL_LOCATION} — ${residency}`;
+  const residency = MODEL.startsWith('eu.')
+    ? 'inférence dans les régions Bedrock européennes'
+    : MODEL.startsWith('global.')
+      ? 'AUCUNE résidence des données — routage mondial'
+      : `inférence en « ${MODEL_REGION} »`;
+  return `modèle: ${MODEL} via Amazon Bedrock (${MODEL_REGION}) — ${residency}`;
+}
+
+/**
+ * The model, bound to Bedrock.
+ *
+ * No temperature: Claude Opus 5 rejects sampling parameters, and adaptive
+ * thinking decides how much to reason. `maxTokens` is generous for the same
+ * reason — thinking counts against it, and a truncated turn is a failed turn.
+ */
+export function bedrock(maxTokens = 8_000): BedrockModel {
+  return new BedrockModel({ modelId: MODEL, region: MODEL_REGION, maxTokens });
 }
 
 /**
  * The embedding model is a separate decision and stays where it was.
  *
- * 768 dimensions, multilingual, verified against the live endpoint. The corpus
- * is French; a newer English-first model would be the wrong tool sold as an
- * upgrade, and changing it means re-embedding the whole catalogue.
+ * Embeddings are not agent turns: they are a vector per listing, stored in a
+ * `vector(768)` column. `text-multilingual-embedding-002` on Vertex AI produced
+ * every vector in the catalogue; changing it means a migration and re-embedding
+ * everything, for no gain in what the agents decide.
  */
 export const EMBEDDING_MODEL = 'text-multilingual-embedding-002';
 
-/** The model, bound to Vertex in our project, in the region that serves it. */
-export function gemini(project: string): Gemini {
-  return new Gemini({
-    model: MODEL,
-    vertexai: true,
-    project,
-    location: MODEL_LOCATION,
-  });
-}
+/** Where the embedding model is served from. */
+export const LOCATION = process.env.GCP_REGION ?? 'europe-west9';
 
-/**
- * The raw SDK client, for the calls that are not agent turns — embeddings.
- *
- * Paris, not `eu`: the embedding model is served from the single region and has
- * been running there since the first backfill. Moving it would mean re-embedding
- * the catalogue to no purpose.
- */
+/** The raw Vertex client, for embeddings only. */
 export function genai(project: string): GoogleGenAI {
   return new GoogleGenAI({ vertexai: true, project, location: LOCATION });
 }
@@ -135,81 +89,94 @@ export interface AgentRun {
   readonly text: string | null;
   /** Every tool the agent called, in order. Recorded so a decision can be explained. */
   readonly toolCalls: readonly string[];
+  /** The validated answer, when the agent was built with a `structuredOutputSchema`. */
+  readonly structured?: unknown;
 }
 
 /**
  * Run one agent to completion and return what it said and what it did.
  *
- * Ephemeral by design: each application and each reply is its own invocation,
- * and the conversation that matters — the one with the agency — already lives in
+ * Ephemeral by design: callers build a fresh `Agent` for every invocation, and
+ * the conversation that matters — the one with the agency — already lives in
  * `messages`, which is the copy the client can read. A second, hidden history
  * inside the runtime would be a second source of truth.
  */
 export async function runAgent(params: {
-  agent: LlmAgent;
+  agent: Agent;
   prompt: string;
-  /** Whose behalf this runs on. Ends up in the trace; never in a prompt. */
-  userId?: string;
   timeoutMs?: number;
 }): Promise<AgentRun> {
-  const { agent, prompt, userId = 'prems', timeoutMs = 30_000 } = params;
+  const { agent, prompt, timeoutMs = 30_000 } = params;
 
-  const runner = new InMemoryRunner({ agent, appName: agent.name });
-  const session = await runner.sessionService.createSession({
-    appName: runner.appName,
-    userId,
+  const result: AgentResult = await agent.invoke(prompt, {
+    cancelSignal: AbortSignal.timeout(timeoutMs),
   });
+  // A cancelled turn is not an answer. Callers have a fallback for a throw; they
+  // have none for half a decision.
+  if (result.stopReason === 'cancelled') {
+    throw new Error(`agent ${agent.name}: délai de ${timeoutMs} ms dépassé`);
+  }
 
   const toolCalls: string[] = [];
-  let text = '';
-
-  const events: AsyncGenerator<Event> = runner.runAsync({
-    userId,
-    sessionId: session.id,
-    newMessage: { role: 'user', parts: [{ text: prompt }] },
-    abortSignal: AbortSignal.timeout(timeoutMs),
-  });
-
-  for await (const event of events) {
-    for (const part of event.content?.parts ?? []) {
-      if (part.functionCall?.name) toolCalls.push(part.functionCall.name);
-    }
-    if (isFinalResponse(event)) {
-      for (const part of event.content?.parts ?? []) if (part.text) text += part.text;
+  for (const message of agent.messages) {
+    for (const block of message.content) {
+      if (block.type === 'toolUseBlock') toolCalls.push(block.name);
     }
   }
 
-  return { text: text.trim() || null, toolCalls };
+  let text = '';
+  for (const block of result.lastMessage.content) {
+    if (block.type === 'textBlock') text += block.text;
+  }
+
+  return { text: text.trim() || null, toolCalls, structured: result.structuredOutput };
 }
 
 /**
- * Run an agent whose answer is JSON, and return it parsed — or null.
+ * Run an agent whose answer is validated against a schema — or null.
  *
  * Null rather than a throw, because every caller here has a fallback that is
  * better than an exception: a plainly written e-mail, or a message classed as
  * `other`. A malformed answer is an outcome, not an incident.
  */
-export async function runAgentJson<T>(params: {
-  agent: LlmAgent;
+export async function runAgentStructured<S extends z.ZodType>(params: {
+  agent: Agent;
+  schema: S;
   prompt: string;
-  userId?: string;
   timeoutMs?: number;
-}): Promise<T | null> {
+}): Promise<z.infer<S> | null> {
   try {
-    const { text } = await runAgent(params);
+    const { structured, text } = await runAgent(params);
+    if (structured !== undefined) return params.schema.parse(structured);
     if (!text) return null;
-    return JSON.parse(stripFence(text)) as T;
+    return params.schema.parse(JSON.parse(stripFence(text)));
   } catch {
     return null;
   }
 }
 
 /**
+ * One real turn against one model ID, for `npm run bedrock:models`.
+ *
+ * A model ID read from documentation is a guess until the account and region
+ * have answered it. This is the same client and credential chain the agents use.
+ */
+export async function probeModel(modelId: string): Promise<string | null> {
+  const agent = new Agent({
+    name: 'prems_probe',
+    model: new BedrockModel({ modelId, region: MODEL_REGION, maxTokens: 2_000 }),
+    printer: false,
+  });
+  const { text } = await runAgent({ agent, prompt: 'Réponds uniquement : OK', timeoutMs: 60_000 });
+  return text;
+}
+
+/**
  * Undo a Markdown fence around JSON.
  *
- * `responseMimeType: application/json` makes this unnecessary almost always.
- * Almost is the operative word, and the cost of being wrong is an application
- * that silently degrades to the flat template.
+ * Structured output makes this unnecessary almost always. Almost is the
+ * operative word, and the cost of being wrong is an application that silently
+ * degrades to the flat template.
  */
 export function stripFence(text: string): string {
   const trimmed = text.trim();

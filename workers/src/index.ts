@@ -65,31 +65,25 @@ async function main(): Promise<void> {
   // pas huit heures devant un public. Voir demo.ts — rien du comportement de
   // l'agent ne change, seule sa cadence.
   if (process.env.MODE === 'demo') {
-    const project = process.env.GCP_PROJECT_ID;
-    if (!project) throw new Error('GCP_PROJECT_ID manquant');
     console.log(modelBanner());
-    return runDemoLoop(project);
+    return runDemoLoop();
   }
 
   if (process.env.MODE === 'inbox') {
-    const project = process.env.GCP_PROJECT_ID;
-    if (!project) throw new Error('GCP_PROJECT_ID manquant');
     // Which model, in which region, and what that means for the data. Logged on
     // every run: a residency decision visible only in a source file is one
     // nobody re-examines.
     console.log(modelBanner());
     const started = Date.now();
-    const { clients, replies } = await watchAllInboxes(project);
+    const { clients, replies } = await watchAllInboxes();
     console.log(`inbox: ${clients} boîte(s) lue(s), ${replies} réponse(s) traitée(s), ${Date.now() - started} ms`);
     return;
   }
   if (process.env.MODE === 'apply') {
-    const project = process.env.GCP_PROJECT_ID;
-    if (!project) throw new Error('GCP_PROJECT_ID manquant');
     console.log(modelBanner());
     const started = Date.now();
     const queued = await queueApplications(Number(process.env.QUEUE_LIMIT ?? 50));
-    const { sent, failed } = await sendDue(project, Number(process.env.SEND_LIMIT ?? 20));
+    const { sent, failed } = await sendDue(Number(process.env.SEND_LIMIT ?? 20));
     // Only now can a runner-up be told somebody was served: after the send, not
     // before it. Closing them at match time is what burned 61 candidates for
     // applications that were never made.

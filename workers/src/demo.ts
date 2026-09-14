@@ -35,7 +35,7 @@ const SOURCE_SLUG = 'demo-agency';
  * répond en direct pendant la démonstration. Elle doit être différente du
  * compte connecté, sinon l'agent lit ses propres messages.
  */
-const AGENCY_EMAIL = process.env.DEMO_AGENCY_EMAIL ?? 'jenie.du.film@gmail.com';
+const AGENCY_EMAIL = process.env.DEMO_AGENCY_EMAIL ?? '';
 
 /** Un tour toutes les huit secondes : au-dessous, on paie des appels pour rien. */
 const TICK_MS = Number(process.env.DEMO_TICK_MS ?? 8000);
@@ -224,7 +224,7 @@ async function explainSilence(): Promise<string> {
 }
 
 /** Un tour complet : poser, matcher, candidater, relever, répondre. */
-async function cycle(project: string): Promise<string> {
+async function cycle(): Promise<string> {
   const started = Date.now();
   const sourceId = await ensureSource();
   const posed = sourceId ? await ensureListings(sourceId) : 0;
@@ -238,13 +238,13 @@ async function cycle(project: string): Promise<string> {
     Number(process.env.QUEUE_LIMIT ?? 20),
     'matches_ready_to_send_demo',
   );
-  const sent = await sendDue(project, Number(process.env.SEND_LIMIT ?? 20));
+  const sent = await sendDue(Number(process.env.SEND_LIMIT ?? 20));
   const outbox = await sendOutbox(Number(process.env.OUTBOX_LIMIT ?? 20));
   await closeLostMatches();
 
   // La relève de boîte, à chaque tour. C'est elle qui, en production, attend
   // huit heures — et c'est elle qui doit répondre en quelques secondes ici.
-  const inbox = await watchAllInboxes(project);
+  const inbox = await watchAllInboxes();
 
   // Zéro candidature : dire pourquoi à chaque tour, pas seulement au tour qui a
   // créé le match. Un match posé au premier tour et bloqué au second serait
@@ -265,7 +265,10 @@ async function cycle(project: string): Promise<string> {
  * dépasse est tué au milieu d'un envoi. `DEMO_MINUTES` doit rester sous
  * `--task-timeout`, et le job est relancé pour la démonstration suivante.
  */
-export async function runDemoLoop(project: string): Promise<void> {
+export async function runDemoLoop(): Promise<void> {
+  // Sans boîte « agence », les candidatures de démonstration partiraient vers
+  // une adresse vide : mieux vaut s'arrêter tout de suite en le disant.
+  if (!AGENCY_EMAIL) throw new Error('DEMO_AGENCY_EMAIL manquant : la boîte qui joue l’agence');
   const minutes = Number(process.env.DEMO_MINUTES ?? 10);
   const deadline = Date.now() + minutes * 60_000;
   let round = 0;
@@ -287,7 +290,7 @@ export async function runDemoLoop(project: string): Promise<void> {
   while (Date.now() < deadline) {
     round += 1;
     try {
-      console.log(`démo #${round}: ${await cycle(project)}`);
+      console.log(`démo #${round}: ${await cycle()}`);
     } catch (error) {
       // Un tour qui échoue ne doit pas arrêter la démonstration : le suivant
       // repart huit secondes plus tard, et l'erreur est visible dans les logs.
