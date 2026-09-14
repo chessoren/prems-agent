@@ -30,7 +30,7 @@ Prems handles the whole errand, not a chat about it:
 
 ### How we built it
 
-- **Agents:** three agents built with the **Strands Agents SDK (TypeScript)**, running on **Claude Opus 5 via Amazon Bedrock** (`BedrockModel`, EU inference profile, `eu-west-3`).
+- **Agents:** three agents built with the **Strands Agents SDK (TypeScript)**, running on **Claude Sonnet 5 via Amazon Bedrock** (`BedrockModel`, EU inference profile, `eu-west-3`).
   - The writer and the classifier use Strands **structured output** (zod schemas).
   - The negotiator uses **tools** defined with `tool()` and zod: `get_client_availability`, `check_calendar_conflicts`, `get_client_facts`, `request_document`, `queue_reply`, `stand_down`.
 - **Guardrails in code, around the agent:**
@@ -96,7 +96,7 @@ strands-agents · amazon-bedrock · claude · typescript · node.js · zod · su
 2. **The product: https://prems.getmira.run.** Onboarding is free (payments are switched off) and opens the app, including the Agent tab.
 3. **The full loop with your own AWS account.**
    - Set `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_REGION` in `.env`.
-   - Run `npm run bedrock:models` to confirm Claude Opus 5 answers.
+   - Run `npm run bedrock:models` to confirm Claude Sonnet 5 answers.
    - Follow *A reproducible end-to-end demo* in the README. It needs a Supabase project and a Composio key.
 
 ## Pre-existing work disclosure (paste into the form)
@@ -115,7 +115,7 @@ strands-agents · amazon-bedrock · claude · typescript · node.js · zod · su
 | 0:00–0:35 | Listing sites, a Paris apartment gone in hours, an inbox full of "déjà loué" | **The problem.** In Paris a good flat is gone in a day, and agencies answer whoever wrote first. Renters apply forty times and watch their inbox all evening. |
 | 0:35–0:55 | Prems landing page | **Who and why.** Prems is for renters who can't be awake at the right moment: students, people moving for work. It does the errand end to end, from their own mailbox. |
 | 0:55–1:30 | Onboarding: search, availability, connect Gmail + Calendar | The renter says what they're looking for and when they can visit, and connects their Gmail and Google Calendar. |
-| 1:30–2:15 | Terminal: `MODE=demo`; the demo listing is matched; the application arrives in the "agency" inbox | A listing appears. The matcher picks it up and the **Strands writer agent** on **Claude Opus 5 / Bedrock** writes the application. It leaves from the renter's own Gmail. |
+| 1:30–2:15 | Terminal: `MODE=demo`; the demo listing is matched; the application arrives in the "agency" inbox | A listing appears. The matcher picks it up and the **Strands writer agent** on **Claude Sonnet 5 / Bedrock** writes the application. It leaves from the renter's own Gmail. |
 | 2:15–3:15 | Agency inbox: reply "mardi 14h ou jeudi 10h ?". Calendar shows Tuesday busy. Next tick: the negotiator's reply arrives, "mardi je ne suis pas disponible, jeudi 10h me convient". | The agency proposes two slots. The classifier reads the reply. The **negotiator agent** calls its tools: it reads the availability, checks the **real Google Calendar**, sees Tuesday is taken and answers with Thursday. |
 | 3:15–3:45 | Agency confirms. Google Calendar now has the visit. App Agent tab lists the tools called. | The agency confirms, and the visit lands in the calendar. The Agent tab shows exactly which tools the agent used and why. |
 | 3:45–4:15 | Code: `negotiate.ts` tools, `agent.ts` BedrockModel, `negotiate.test.ts` passing | **Under the hood.** Six Strands tools, structured output for the writer and classifier. Guardrails are in code, not the prompt, and tested. |

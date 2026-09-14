@@ -2,12 +2,12 @@
 
 **An agent that applies to rental listings for you, answers the letting agency, and books the viewing: from your own mailbox, while you sleep.**
 
-Built with the **[Strands Agents SDK](https://strandsagents.com)** (TypeScript) on **Claude Opus 5 via Amazon Bedrock**.
+Built with the **[Strands Agents SDK](https://strandsagents.com)** (TypeScript) on **Claude Sonnet 5 via Amazon Bedrock**.
 Submitted to the **AWS _Agents for Humans_ hackathon: Everyday Agents track.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 ![Strands Agents SDK](https://img.shields.io/badge/Strands_Agents-TypeScript-orange)
-![Amazon Bedrock](https://img.shields.io/badge/Amazon_Bedrock-Claude_Opus_5-232F3E)
+![Amazon Bedrock](https://img.shields.io/badge/Amazon_Bedrock-Claude_Sonnet_5-232F3E)
 
 Live site: **https://prems.getmira.run** · Hackathon write-up: [`docs/HACKATHON.md`](docs/HACKATHON.md) · Architecture (FR): [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · Operations (FR): [`docs/RUNBOOK.md`](docs/RUNBOOK.md)
 
@@ -66,7 +66,7 @@ flowchart LR
     NEGOTIATOR["prems_negotiator<br/>6 tools"]
   end
 
-  BEDROCK[("Amazon Bedrock<br/>Claude Opus 5<br/>eu. inference profile · eu-west-3")]
+  BEDROCK[("Amazon Bedrock<br/>Claude Sonnet 5<br/>eu. inference profile · eu-west-3")]
   DB[("Supabase Postgres<br/>listings · matches · applications<br/>messages outbox · events log · agent_requests")]
   COMPOSIO["Composio OAuth<br/>client's Gmail + Google Calendar"]
   WEB["Astro site on Vercel<br/>onboarding + app (Agent tab)"]
@@ -124,7 +124,7 @@ const checkConflicts = tool({
 
 return new Agent({
   name: 'prems_negotiator',
-  model: bedrock(),                       // BedrockModel, Claude Opus 5
+  model: bedrock(),                       // BedrockModel, Claude Sonnet 5
   systemPrompt: NEGOTIATOR_INSTRUCTION,
   tools: [getAvailability, checkConflicts, getFacts, requestDocument, queueReply, standDown],
   printer: false,
@@ -152,7 +152,7 @@ All of these are pinned by tests that replay a script of tool calls against the 
 
 | Setting | Default | Why |
 |---|---|---|
-| `BEDROCK_MODEL_ID` | `eu.anthropic.claude-opus-5` | The prompts carry a named person's income, availability and private correspondence. The `eu.` inference profile keeps inference in European regions. |
+| `BEDROCK_MODEL_ID` | `eu.anthropic.claude-sonnet-5` | The prompts carry a named person's income, availability and private correspondence. The `eu.` inference profile keeps inference in European regions. |
 | `AWS_REGION` | `eu-west-3` (Paris) | The same city as the users. |
 | Credentials | AWS SDK default chain | An IAM role where attached; otherwise `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` from a secret manager. |
 
@@ -218,7 +218,7 @@ printf %s "$AWS_ACCESS_KEY_ID"     | gcloud secrets create aws-access-key-id --d
 printf %s "$AWS_SECRET_ACCESS_KEY" | gcloud secrets create aws-secret-access-key --data-file=-
 for JOB in prems-apply prems-inbox; do
   gcloud run jobs update $JOB --region=europe-west9 \
-    --update-env-vars=AWS_REGION=eu-west-3,BEDROCK_MODEL_ID=eu.anthropic.claude-opus-5 \
+    --update-env-vars=AWS_REGION=eu-west-3,BEDROCK_MODEL_ID=eu.anthropic.claude-sonnet-5 \
     --update-secrets=AWS_ACCESS_KEY_ID=aws-access-key-id:latest,AWS_SECRET_ACCESS_KEY=aws-secret-access-key:latest
 done
 npm run preflight           # checks every link of the chain, including Bedrock credentials on each job

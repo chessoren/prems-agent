@@ -23,18 +23,18 @@ import { GoogleGenAI } from '@google/genai';
 import type { z } from 'zod';
 
 /**
- * Claude Opus 5, through an EU cross-region inference profile.
+ * Claude Sonnet 5, through an EU cross-region inference profile.
  *
  * The `eu.` prefix keeps inference inside European Bedrock regions. These
  * prompts carry a named person's employment, net monthly income, the days they
  * are free and their private correspondence with a letting agency; keeping them
- * in the EU is the default, not an option. `global.anthropic.claude-opus-5`
+ * in the EU is the default, not an option. `global.anthropic.claude-sonnet-5`
  * trades that for capacity — one variable, no code.
  *
  * `npm run bedrock:models` checks which of these actually answer from the
  * configured account and region.
  */
-export const MODEL = process.env.BEDROCK_MODEL_ID ?? 'eu.anthropic.claude-opus-5';
+export const MODEL = process.env.BEDROCK_MODEL_ID ?? 'eu.anthropic.claude-sonnet-5';
 
 /** Paris, like the clients. Where Bedrock is called from. */
 export const MODEL_REGION = process.env.AWS_REGION ?? 'eu-west-3';
@@ -57,7 +57,7 @@ export function modelBanner(): string {
 /**
  * The model, bound to Bedrock.
  *
- * No temperature: Claude Opus 5 rejects sampling parameters, and adaptive
+ * No temperature: Claude Sonnet 5 rejects sampling parameters, and adaptive
  * thinking decides how much to reason. `maxTokens` is generous for the same
  * reason — thinking counts against it, and a truncated turn is a failed turn.
  */

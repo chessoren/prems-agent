@@ -218,7 +218,7 @@ function checkCloudRun() {
         (acc, e) => ({ ...acc, [e.name]: e.value }),
         {},
       ) ?? {};
-    const model = vars.BEDROCK_MODEL_ID ?? 'eu.anthropic.claude-opus-5 (défaut du code)';
+    const model = vars.BEDROCK_MODEL_ID ?? 'eu.anthropic.claude-sonnet-5 (défaut du code)';
     const region = vars.AWS_REGION ?? 'eu-west-3 (défaut du code)';
     const secrets = job?.spec?.template?.template?.spec?.containers?.[0]?.env ?? [];
     const hasKeys = secrets.some((e) => e.name === 'AWS_ACCESS_KEY_ID');

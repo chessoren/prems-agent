@@ -16,9 +16,9 @@ const { MODEL, MODEL_REGION, probeModel } = await import('../workers/dist/agent.
 const candidates = [
   ...new Set([
     MODEL,
-    'eu.anthropic.claude-opus-5',
-    'global.anthropic.claude-opus-5',
-    'anthropic.claude-opus-5',
+    'eu.anthropic.claude-sonnet-5',
+    'global.anthropic.claude-sonnet-5',
+    'eu.anthropic.claude-haiku-4-5-20251001-v1:0',
   ]),
 ];
 
