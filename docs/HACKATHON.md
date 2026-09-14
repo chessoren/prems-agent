@@ -78,6 +78,7 @@ strands-agents · amazon-bedrock · claude · typescript · node.js · zod · su
 - Code: https://github.com/chessoren/prems-agent
 - Live site: https://prems.getmira.run
 - Demo video (YouTube/Vimeo, public, ≤ 5 min): **TO ADD**
+- Architecture diagram to upload in the image gallery: [`docs/architecture-en.png`](architecture-en.png)
 
 ---
 
