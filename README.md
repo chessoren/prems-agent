@@ -52,38 +52,48 @@ flowchart LR
     BI["Bien'ici adapter"]
   end
 
-  subgraph RUN["Workers · Cloud Run Jobs · one image, MODE selects the job"]
+  subgraph GCP["Collection jobs · Cloud Run"]
     SCRAPE["prems-scrape · 1 min"]
     ENRICH["prems-enrich · 5 min<br/>embeddings + dedup"]
     MATCH["prems-match · 1 min"]
-    APPLY["prems-apply · 2 min"]
-    INBOX["prems-inbox"]
   end
 
-  subgraph STRANDS["Strands Agents SDK (TypeScript)"]
-    WRITER["prems_application_writer<br/>structured output"]
-    CLASSIFIER["prems_reply_classifier<br/>structured output"]
-    NEGOTIATOR["prems_negotiator<br/>6 tools"]
+  subgraph AWS["AWS · eu-west-3"]
+    SCHED["EventBridge Scheduler"]
+    subgraph ECS["ECS Fargate · image from CodeBuild → ECR"]
+      APPLY["prems-apply · 2 min"]
+      INBOX["prems-inbox · 08:00"]
+    end
+    subgraph STRANDS["Strands Agents SDK (TypeScript)"]
+      WRITER["prems_application_writer<br/>structured output"]
+      CLASSIFIER["prems_reply_classifier<br/>structured output"]
+      NEGOTIATOR["prems_negotiator<br/>6 tools"]
+    end
+    BEDROCK[("Amazon Bedrock<br/>Claude Sonnet 5 · eu. profile")]
+    SECRETS["Secrets Manager<br/>Supabase · Composio"]
+    IAM["IAM task role<br/>bedrock:InvokeModel"]
   end
 
-  BEDROCK[("Amazon Bedrock<br/>Claude Sonnet 5<br/>eu. inference profile · eu-west-3")]
-  DB[("Supabase Postgres<br/>listings · matches · applications<br/>messages outbox · events log · agent_requests")]
-  COMPOSIO["Composio OAuth<br/>client's Gmail + Google Calendar"]
-  WEB["Astro site on Vercel<br/>onboarding + app (Agent tab)"]
+  DB[("Supabase Postgres<br/>matches · messages outbox<br/>events log · agent_requests")]
+  COMPOSIO["Composio OAuth<br/>renter's Gmail + Google Calendar"]
+  WEB["Astro site on Vercel<br/>onboarding + Agent tab"]
   USER(("Renter"))
   AGENCY(("Letting agency"))
 
   BI --> SCRAPE --> DB
   DB --> ENRICH --> DB
   DB --> MATCH --> DB
+  SCHED --> APPLY & INBOX
+  SECRETS -.-> ECS
+  IAM -.-> STRANDS
   APPLY --> WRITER
-  INBOX --> CLASSIFIER
-  INBOX --> NEGOTIATOR
+  INBOX --> CLASSIFIER & NEGOTIATOR
   WRITER & CLASSIFIER & NEGOTIATOR <--> BEDROCK
   NEGOTIATOR -- "check_calendar_conflicts" --> COMPOSIO
   NEGOTIATOR -- "request_document" --> DB
-  APPLY -- "send from client's Gmail" --> COMPOSIO
-  INBOX -- "read replies · write confirmed visit" --> COMPOSIO
+  APPLY -- "send from renter's Gmail" --> COMPOSIO
+  INBOX -- "read replies · book visit" --> COMPOSIO
+  APPLY & INBOX <--> DB
   COMPOSIO <--> AGENCY
   DB <--> WEB <--> USER
 ```
