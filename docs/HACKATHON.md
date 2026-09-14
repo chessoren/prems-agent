@@ -39,6 +39,7 @@ Prems handles the whole errand, not a chat about it:
   - a reply that names dates without reading availability is replaced by a safe one;
   - nothing is sent from inside the agent: `queue_reply` feeds an outbox.
 - **Tests:** they replay scripted tool calls against the real Strands tools (63 tests in CI).
+- **AWS deployment:** the two agent jobs run as ECS Fargate tasks in eu-west-3. EventBridge Scheduler triggers them, CodeBuild builds the image into ECR, an IAM task role grants Bedrock access (no keys), and Secrets Manager holds the credentials. All of it is in `infra/aws/`.
 - **Pipeline:** TypeScript workers in one Docker image, run as scheduled jobs.
   - Supabase Postgres (RLS) is the single source of truth.
   - Composio brokers per-user Gmail and Google Calendar OAuth.
@@ -71,7 +72,7 @@ Prems handles the whole errand, not a chat about it:
 
 ## Built with
 
-strands-agents · amazon-bedrock · claude · typescript · node.js · zod · supabase · postgresql · pgvector · composio · gmail-api · google-calendar-api · astro · vercel · docker · google-cloud-run
+strands-agents · amazon-bedrock · claude · amazon-ecs · aws-fargate · amazon-eventbridge · aws-codebuild · amazon-ecr · aws-secrets-manager · aws-iam · typescript · node.js · zod · supabase · postgresql · pgvector · composio · gmail-api · google-calendar-api · astro · vercel · docker · google-cloud-run
 
 ## Links
 

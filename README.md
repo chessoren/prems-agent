@@ -209,29 +209,40 @@ npm run db:demo -- --remove
 
 The agent is told nothing: same table, same filter, same score, same send path.
 
-## Deploying
+## Deploying on AWS
 
-The workers are one Docker image ([`workers/Dockerfile`](workers/Dockerfile)) run as scheduled jobs. [`workers/cloudbuild.yaml`](workers/cloudbuild.yaml) builds and deploys a job. The two jobs that call agents need Bedrock credentials:
+The two jobs that call agents, `prems-apply` and `prems-inbox`, run on AWS in `eu-west-3` (Paris). Everything is created by scripts in [`infra/aws/`](infra/aws/), and each script can be re-run safely.
 
 ```bash
-printf %s "$AWS_ACCESS_KEY_ID"     | gcloud secrets create aws-access-key-id --data-file=-
-printf %s "$AWS_SECRET_ACCESS_KEY" | gcloud secrets create aws-secret-access-key --data-file=-
-for JOB in prems-apply prems-inbox; do
-  gcloud run jobs update $JOB --region=europe-west9 \
-    --update-env-vars=AWS_REGION=eu-west-3,BEDROCK_MODEL_ID=eu.anthropic.claude-sonnet-5 \
-    --update-secrets=AWS_ACCESS_KEY_ID=aws-access-key-id:latest,AWS_SECRET_ACCESS_KEY=aws-secret-access-key:latest
-done
-npm run preflight           # checks every link of the chain, including Bedrock credentials on each job
+npm run aws:image           # CodeBuild clones this repo, builds workers/Dockerfile, pushes to ECR prems-workers
+npm run aws:stack           # secrets, IAM roles, ECS Fargate cluster + task definitions, EventBridge schedules (disabled)
+npm run aws:run -- smoke    # one Fargate task that checks Supabase, Composio and Bedrock, and sends nothing
+npm run aws:schedules -- enable
 ```
 
-The image is generic Node 22 and has no Google-specific runtime dependency on the agent path. It runs unchanged on ECS Fargate scheduled tasks with an IAM role instead of keys.
+| Piece | AWS service |
+|---|---|
+| Image build | **CodeBuild** project `prems-workers-image` → **ECR** `prems-workers` |
+| Jobs | **ECS Fargate** cluster `prems`, task definitions `prems-apply`, `prems-inbox`, `prems-demo` (one image, `MODE` selects the job) |
+| Timers | **EventBridge Scheduler**: `prems-apply` every 2 minutes, `prems-inbox` at 08:00 Europe/Paris |
+| Model access | **IAM task role** `prems-ecs-task` with `bedrock:InvokeModel` / `Converse`. No model key exists anywhere. |
+| Credentials | **Secrets Manager** `prems/supabase-service-role-key`, `prems/composio-api-key`, injected by the execution role |
+| Logs | **CloudWatch Logs** `/ecs/prems-workers` |
+
+The live demo runs as a one-off Fargate task:
+
+```bash
+npm run aws:run -- demo DEMO_AGENCY_EMAIL=your-other@example.com
+```
+
+The collection jobs that don't call a model (scrape, enrich, match, agencies) still run as Cloud Run jobs. The schedules are created disabled: turn them on only once the Cloud Run `prems-apply` and `prems-inbox` jobs are paused, or every application would go out twice.
 
 ## What does not work yet
 
 Stated here rather than discovered by a reader.
 
 - **No real client has connected a mailbox yet.** The Gmail/Calendar consent flow, the edge function and the workers are in place. What's missing is a person clicking through Google's consent screen. The demo mode above is how the full loop is shown.
-- **Bedrock was wired on 14 September and has not run in production yet.** The pipeline ran on Google's ADK with Gemini until that day. The deployed jobs pick up Strands + Bedrock once they are redeployed with AWS credentials (see *Deploying*).
+- **The agents moved to Strands on Bedrock on 14 September.** Until that day the pipeline ran on Google's ADK with Gemini. The AWS stack above was created the same night, on a brand-new AWS account whose Bedrock access for Anthropic models was still being activated.
 - **Embeddings still come from Vertex AI.** `text-multilingual-embedding-002` (768 dimensions) produced every vector in the catalogue. Moving to Titan or Cohere embeddings means a migration and a full re-embed. No agent decision depends on it.
 - **Amazon Bedrock AgentCore is not used.** The agents run inside batch jobs that already have a schedule, a timeout and an outbox. AgentCore Runtime is the natural next step for an interactive, per-user agent.
 - **Coverage is limited.**
@@ -257,6 +268,7 @@ Stated here rather than discovered by a reader.
 | `supabase/` | SQL migrations (RLS everywhere) and edge functions (mailbox connection, Stripe webhook) |
 | `src/` | Astro site: landing page, onboarding, and the app with the Agent tab |
 | `services/prems-api/` | Document OCR service for the applicant's file |
+| `infra/aws/` | The AWS deployment: CodeBuild image, ECS Fargate stack, one-off runs, schedules |
 | `tools/` | Provisioning, preflight, `bedrock-models` probe, screenshot tools |
 | `docs/` | Detailed architecture, status and runbook (in French) |
 

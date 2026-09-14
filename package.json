@@ -27,7 +27,11 @@
     "db:inspect": "NODE_USE_ENV_PROXY=1 node tools/supabase/inspect.mjs",
     "preflight": "NODE_USE_ENV_PROXY=1 node tools/preflight.mjs",
     "db:demo": "NODE_USE_ENV_PROXY=1 node tools/supabase/seed-demo-agency.mjs",
-    "bedrock:models": "tsc -b workers && node --env-file-if-exists=.env tools/bedrock-models.mjs"
+    "bedrock:models": "tsc -b workers && node --env-file-if-exists=.env tools/bedrock-models.mjs",
+    "aws:image": "node --env-file-if-exists=.env infra/aws/image.mjs",
+    "aws:stack": "node --env-file-if-exists=.env infra/aws/stack.mjs",
+    "aws:run": "node --env-file-if-exists=.env infra/aws/run.mjs",
+    "aws:schedules": "node --env-file-if-exists=.env infra/aws/schedules.mjs"
   },
   "repository": {
     "type": "git",
@@ -41,6 +45,15 @@
   },
   "homepage": "https://github.com/chessoren/prems-landing-page#readme",
   "devDependencies": {
+    "@aws-sdk/client-cloudwatch-logs": "^3.1132.0",
+    "@aws-sdk/client-codebuild": "^3.1132.0",
+    "@aws-sdk/client-ec2": "^3.1132.0",
+    "@aws-sdk/client-ecr": "^3.1132.0",
+    "@aws-sdk/client-ecs": "^3.1132.0",
+    "@aws-sdk/client-iam": "^3.1132.0",
+    "@aws-sdk/client-scheduler": "^3.1132.0",
+    "@aws-sdk/client-secrets-manager": "^3.1132.0",
+    "@aws-sdk/client-sts": "^3.1132.0",
     "@types/node": "^24.10.1",
     "cheerio": "^1.2.0",
     "google-auth-library": "^11.0.2",

@@ -10,7 +10,7 @@
  *  - No superlatives. "Je serais ravi de découvrir ce bien d'exception" is how
  *    a template announces itself.
  *
- * The model is Claude Opus 5 on Amazon Bedrock, reached through the Strands
+ * The model is Claude Sonnet 5 on Amazon Bedrock, reached through the Strands
  * Agents SDK rather than by hand (see `agent.ts`). The writer is a plain
  * agent with no tools: everything it may say is in the prompt, and giving it a
  * way to go and read more would only widen what it can get wrong.
